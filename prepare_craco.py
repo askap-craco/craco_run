@@ -35,6 +35,7 @@ some parameter we consider to input
 """
 import os
 import re
+import sys
 import glob
 
 from craft.cmdline import strrange
@@ -354,6 +355,13 @@ def main():
         make_run(values.obs, values.cal, values.run)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        sys.exit(0)
+    except Exception as error:
+        logging.info("Error found when executing `prepare_craco.py`... please run it alone to check...")
+        logging.error("Error at %s", exc_info=error)
+        sys.exit(1)
+        
     
 

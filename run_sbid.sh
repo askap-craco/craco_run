@@ -15,7 +15,12 @@ leading_zero_fill ()
 cd /data/seren-01/big/craco/wan342/craco_run
 echo "current directory $PWD"
 
-/data/seren-01/big/craco/wan342/craco_run/prepare_craco.py -o $obssbid -c $calsbid -r $runname
+
+if ! (/data/seren-01/big/craco/wan342/craco_run/prepare_craco.py -o $obssbid -c $calsbid -r $runname); then
+    echo "Exception was raised during prepare_craco run... aborted..."
+    exit
+fi
+
 obssbidpad=$(leading_zero_fill 6 "$obssbid")
 scriptdir=/data/seren-01/big/craco/SB$obssbidpad/run/scripts
 
