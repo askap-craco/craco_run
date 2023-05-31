@@ -346,9 +346,10 @@ def main():
 
     values = parser.parse_args()
 
-    if values.cal.lower() == "none":
-        run_prepare(values.obs, None)
-        make_run(values.obs, None, values.run)
+    if values.cal is not None:
+        if values.cal.lower() == "none":
+            run_prepare(values.obs, None)
+            make_run(values.obs, None, values.run)
 
     else:
         run_prepare(values.obs, values.cal)
@@ -359,8 +360,8 @@ if __name__ == "__main__":
         main()
         sys.exit(0)
     except Exception as error:
-        logging.info("Error found when executing `prepare_craco.py`... please run it alone to check...")
-        logging.error("Error at %s", exc_info=error)
+        log.info("Error found when executing `prepare_craco.py`... please run it alone to check...")
+        log.error("Error message...", exc_info=error)
         sys.exit(1)
         
     

@@ -6,18 +6,23 @@ This script will
 2. Find bad antennas based on the metadata file
 3. Link calibration folder to the observation which is going to perform search on
 4. Make mpipipeline bash script to run the whole process
-5. (TODO) Use `ts` to queue the jobs
+5. Use `task-spooler` to queue the whole process
 
 If you want to change the parameters, for example, which additional antennas you want to flag, the number of the samples you want to perform the search on, etc.
 You need to modify them in `craco_cfg.py` file.
 
-If you are happy with the parameters, use the following code to run the process
+If you want to run the pipeline for one specific schedule block, use `run_sbid.sh` bash script 
 
-`>>> ./prepare_craco.py -o 49721 -c 49719`
+`>>> ./run_sbid.sh <the schedule block to run on> <the calibration schedule block> <the run name>`
 
-This assumes that you will perform the search on SB49721 with the calibration file derived from SB49719
+For example, if I want to execute mpipipeline on SB49721 with the calibration file derived from SB49719,
+and put all results under `results` folder, then we can use
 
-After running the script, the data structure of the SB49721 (your observation) will be 
+`>>> ./run_sbid.sh 49721 49719 results`
+
+If you wish to run the pipeline without calibration applied, use `none` instead, i.e.,
+
+`>>> ./run_sbid.sh 49721 none results`
 
 ```
 SB0?????
@@ -34,3 +39,26 @@ SB0?????
       ...
 
 ```
+
+### Notes
+
+#### Script directory and virtual environment
+
+The scripts are stored at `/data/big/craco/wan342/craco_run` on seren. Usually, the default environment for `craftop` will work fine. But if you want to run a more flexible craco (i.e., you can change code yourself, not ask Keith to do :)), `deactivate` the default environment, and use `conda activate pipe` to activate this `conda` environment.
+
+#### How to perform calibration
+
+For details, please refer to the readme file at `https://github.com/askap-craco/craco_calib/tree/pipe`. 
+
+#### `prepare_craco.py` scripts
+
+The core part of this bash script is `prepare_craco.py` script, the usage is almost the same as `run_sbid.sh`
+
+`>>> ./prepare_craco.py -o 49721 -c 49719 -r results`
+
+This assumes that you will perform the search on SB49721 with the calibration file derived from SB49719.
+And save all the output files under `results` folder
+
+After running the script, the data structure of the SB49721 (your observation) will be 
+
+
