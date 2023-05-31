@@ -6,7 +6,7 @@ if you want to change the configuration of the pipeline run
 please change the values in `craco_cfg.py`
 
 after doing that, in the command line, use
->>> ./prepare_craco.py -o 49721 -c 49719
+>>> ./prepare_craco.py -o 49721 -c 49719 -r results
 to make all preparation for mpipipeline run
 """
 
@@ -34,6 +34,7 @@ some parameter we consider to input
 5) check if all things existed
 """
 import os
+import re
 import glob
 
 from craft.cmdline import strrange
@@ -64,7 +65,8 @@ def _check_sbid(sbid):
 def run_prepare(obssbid, calsbid):
     # format sbid
     _obssbid = _format_sbid(obssbid)
-    _calsbid = _format_sbid(calsbid)
+    if calsbid is not None:
+        _calsbid = _format_sbid(calsbid)
     _obssbid_s = _format_sbid(obssbid, padding=False)
 
     # a range of different directory and path...
@@ -79,14 +81,15 @@ def run_prepare(obssbid, calsbid):
     badant = find_bad_ant(meta)
     dump_bad_ant(flagpath, badant)
 
-    linkcal(obssbid, calsbid)
+    if calsbid is not None:
+        linkcal(obssbid, calsbid)
 
     ### check if all files are already there...
     if not os.path.exists(meta):
         raise FileNotFoundError(f"No metadata file found for {_obssbid}...")
     if not os.path.exists(flagpath):
         raise FileNotFoundError(f"No flagged antenna file found for {_obssbid}...")
-    if not os.path.exists(caldir):
+    if not os.path.exists(caldir) and calsbid is not None:
         raise FileNotFoundError(f"No calibration files found for {_obssbid}...")
 
     log.info("data transferring, linking done successfully... starting to make run.sh file...")
@@ -177,13 +180,37 @@ def _load_flag_ant(obssbid):
     with open(flagpath) as fp:
         flaglst = eval(fp.read())
 
+    ### remove antenna > 30...
+    flaglst = [i for i in flaglst if i <= 30]
+
     if cfg.FLAGANT is None:
         return _intlst_to_range(flaglst)
     flaglst.extend(strrange(cfg.FLAGANT))
     flaglst = list(set(flaglst))
     return _intlst_to_range(flaglst)
 
-def _make_scan_run(obssbid, scan, ts):
+def _load_dead_card(resetlog="/data/big/craco/wan342/craco_run/resetlogs"):
+    if cfg.DEAD is not None:
+        log.warning("DEAD CARDS specified in cfg file... will use that...")
+        return cfg.DEAD
+    dead_cards = []
+    node_dict = {0: "86", 1: "3b"}
+    for icard in range(1, 11): # seren-01 to seren-10
+        for inode in range(2):
+            fname = f"{resetlog}/seren-{icard:0>2}_0000:{node_dict[inode]}:00.1.log"
+            with open(fname) as fp:
+                logstring = fp.read()
+            pattern = r" JTAG ID Code\s+:\s+(.*?)\s+\n"
+            jtag_status = re.findall(pattern, logstring)
+
+            if "0x0" in jtag_status or len(jtag_status) == 0:
+                dead_cards.append(f"seren-{icard:0>2}:{inode}")
+    if dead_cards: return ",".join(dead_cards)
+    return None
+    
+
+
+def _make_scan_run(obssbid, calsbid, scan, ts, runname="results"):
     _obssbid = _format_sbid(obssbid)
     _obssbid_s = _format_sbid(obssbid, padding=False)
 
@@ -226,40 +253,40 @@ caldir={caldir}
 meta={meta}
 fcm={cfg.FCM}
 
-outdir=$indir/results
+outdir=$indir/{runname}
 """
 
     # check if there is any dead card
-    if cfg.DEAD is not None:
-        _bashcmd += f"""dead={cfg.DEAD}\n\n"""
-
-    _bashcmd = f"""{_bashcmd}
-{cfg.MPIPIPESH_PATH} \\
-    --cardcap-dir $indir \\
-    --outdir $outdir \\
-    --calibration $caldir \\
-    --phase-center-filterbank {cfg.PC_FILTERBANK} \\
-    --fcm $fcm \\
-    --metadata $meta \\
-    --xclbin $XCLBIN \\
-    --pol-sum \\
-    --block {block_strrange} --card {card_strrange} \\
-    --max-ncards {cfg.MAX_NCARDS} \\
-    --ncards-per-host {cfg.NCARDS_PER_HOST} \\
-    --nd {cfg.ND} -N {cfg.N} \\
-    --threshold {cfg.THRESHOLD} \\
-"""
+    dead_card = _load_dead_card()
+    if dead_card is not None:
+        _bashcmd += f"""dead={dead_card}\n"""
 
     if flagant_strrange != "":
-        _bashcmd += f"""    --flag-ants {flagant_strrange} \\ \n"""
-    if cfg.DEAD is not None:
-        _bashcmd += f"""    --dead-cards $dead \\ \n"""
+        _bashcmd += f"""flagant={flagant_strrange}\n"""
+
+    _bashcmd += f"""block={block_strrange}
+card={card_strrange}
+"""
+
+    _bashcmd = f"""{_bashcmd}
+{cfg.MPIPIPESH_PATH} --cardcap-dir $indir --outdir $outdir --phase-center-filterbank {cfg.PC_FILTERBANK} """
+
+    if calsbid is not None:
+        _bashcmd += f"""--calibration $caldir """
+
+    _bashcmd += f"""--fcm $fcm --metadata $meta --xclbin $XCLBIN --pol-sum --block $block --card $card """
+    _bashcmd += f"""--max-ncards {cfg.MAX_NCARDS} --ncards-per-host {cfg.NCARDS_PER_HOST} --nd {cfg.ND} -N {cfg.N} --threshold {cfg.THRESHOLD} """
+
+    if flagant_strrange != "":
+        _bashcmd += f"""--flag-ants $flagant """
+    if dead_card is not None:
+        _bashcmd += f"""--dead-cards $dead """
     
     for irun, beam_strrange in enumerate(_split_beam_run(cfg.MAXBEAM)):
-        bashcmd = _bashcmd + f"""    --search-beams {beam_strrange} \\ \n"""
-        bashcmd += f"""    2>&1 | tee {runoutpath}/piperun.{scan}.{ts}.{irun}.out \n"""
+        bashcmd = _bashcmd + f"""--search-beams {beam_strrange} """
+        bashcmd += f"""2>&1 | tee {runoutpath}/piperun.{scan}.{ts}.{irun}.out\n"""
 
-        runshfname = f"{runscriptpath}/runpipe.{scan}.ts.{irun}.sh"
+        runshfname = f"{runscriptpath}/runpipe.{scan}.{ts}.{irun}.sh"
         log.info(f"write bash file to {runshfname}")
         with open(runshfname, "w") as fp:
             fp.write(bashcmd)
@@ -270,7 +297,7 @@ outdir=$indir/results
         
 
 
-def make_run(obssbid):
+def make_run(obssbid, calsbid, runname="results"):
     """
     the basic structure at the moment
 
@@ -294,7 +321,16 @@ def make_run(obssbid):
     allscans = _find_scans(obssbid) #[["00", "2023xxxx"], ["01", "2023xxxx"]]
     for scan, ts in allscans:
         log.info(f"making bash script for {_obssbid}/{scan}/{ts}...")
-        _make_scan_run(obssbid, scan, ts)
+        _make_scan_run(obssbid, calsbid, scan, ts, runname=runname)
+
+def make_tsp_run(
+    obssbid, calsbid, results="results",
+
+):
+    """
+    make tsp file to do all run in once...
+    """
+    pass
 
 
 def main():
@@ -305,10 +341,17 @@ def main():
     )
     parser.add_argument("-o", "--obs", type=str, help="SBID of the observation", default=None)
     parser.add_argument("-c", "--cal", type=str, help="SBID of the calibration", default=None)
+    parser.add_argument("-r", "--run", type=str, help="run name, `results` by default", default="results")
 
     values = parser.parse_args()
-    run_prepare(values.obs, values.cal)
-    make_run(values.obs)
+
+    if values.cal.lower() == "none":
+        run_prepare(values.obs, None)
+        make_run(values.obs, None, values.run)
+
+    else:
+        run_prepare(values.obs, values.cal)
+        make_run(values.obs, values.cal, values.run)
 
 if __name__ == "__main__":
     main()
