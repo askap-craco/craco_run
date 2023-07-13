@@ -26,10 +26,10 @@ def getmeta(sbid):
     _sbid = _format_sbid(sbid, padding=False)
     if not os.path.exists(f"/data/seren-01/big/craco/{_sbid_p}"):
         raise FileNotFoundError(f"no directory found on seren-01 for {_sbid}")
-
-    scpcmd = f'''scp "tethys:/data/TETHYS_1/craftop/metadata_save/{_sbid}.json.gz" /data/seren-01/big/craco/{_sbid_p}/'''
-    log.info(f"executing command - {scpcmd}")
-    os.system(scpcmd)
+    if not os.path.exists(f"/data/seren-01/big/craco/{_sbid_p}/{_sbid}.json.gz"):
+        scpcmd = f'''scp "tethys:/data/TETHYS_1/craftop/metadata_save/{_sbid}.json.gz" /data/seren-01/big/craco/{_sbid_p}/'''
+        log.info(f"executing command - {scpcmd}")
+        os.system(scpcmd)
 
     # check if metadata is there
     if not os.path.isfile(f"/data/seren-01/big/craco/{_sbid_p}/{_sbid}.json.gz"):

@@ -2,15 +2,19 @@
 MAX_NCARDS          =       30
 NCARDS_PER_HOST     =       3
 ND                  =       40
-N                   =       1000000000 # number of samples used to perform the search
+N                   =       10000000000 #1000000000 # number of samples used to perform the search
 MAXBEAM             =       20 # number of beam to run simultaneously
 THRESHOLD           =       6 # number of threshold to be used in the search pipeline
-DEAD                =       None # "seren-01:0-1,seren-04:1,seren-07:1"
+DEAD                =       None # "seren-02:0-1" #"seren-01:0-1,seren-04:0-1,seren-07:1,seren-08:1" # "seren-01:0-1,seren-04:1,seren-07:1"
 FLAGANT             =       "24-30" # additional antenna to be flagged, should be a string (should be 1-based)
+SUBTRACT            =       64 # subtract every 32 samples
+FLAGCHAN            =       "47-55" # channel number to be flagged
+UPDATE_UV_BLOCKS    =       768 # can be 0, or anything above 256 (included)
+SAVE_UVFITS         =       False # whether to save the uvfits files or not
 
 # some usually not changing parameter here
 FCM                 =       "/home/ban115/20220714.fcm"
-BLOCK               =       "2-4" # decided by ccapfits file automatically, usually it should be "2-4"
+BLOCK               =       None # decided by ccapfits file automatically, usually it should be "2-4"
 CARD                =       None # same as the above, usually it should be "1-12"
 PC_FILTERBANK       =       "pc.fil"
 # MPIPIPESH_PATH      =       "/data/big/craco/wan342/craco_run/mpifiles/mpipipeline.sh"

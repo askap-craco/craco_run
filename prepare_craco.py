@@ -258,9 +258,9 @@ outdir=$indir/{runname}
 """
 
     # check if there is any dead card
-    dead_card = _load_dead_card()
-    if dead_card is not None:
-        _bashcmd += f"""dead={dead_card}\n"""
+    # dead_card = _load_dead_card()
+    # if dead_card is not None:
+    #     _bashcmd += f"""dead={dead_card}\n"""
 
     if flagant_strrange != "":
         _bashcmd += f"""flagant={flagant_strrange}\n"""
@@ -269,6 +269,9 @@ outdir=$indir/{runname}
 card={card_strrange}
 """
 
+    if cfg.FLAGCHAN is not None:
+        _bashcmd += f"""flagchan={cfg.FLAGCHAN}\n"""
+
     _bashcmd = f"""{_bashcmd}
 {cfg.MPIPIPESH_PATH} --cardcap-dir $indir --outdir $outdir --phase-center-filterbank {cfg.PC_FILTERBANK} """
 
@@ -276,16 +279,24 @@ card={card_strrange}
         _bashcmd += f"""--calibration $caldir """
 
     _bashcmd += f"""--fcm $fcm --metadata $meta --xclbin $XCLBIN --pol-sum --block $block --card $card """
-    _bashcmd += f"""--max-ncards {cfg.MAX_NCARDS} --ncards-per-host {cfg.NCARDS_PER_HOST} --nd {cfg.ND} -N {cfg.N} --threshold {cfg.THRESHOLD} """
+    _bashcmd += f"""--max-ncards {cfg.MAX_NCARDS} --ncards-per-host {cfg.NCARDS_PER_HOST} --nd {cfg.ND} -N {cfg.N} --threshold {cfg.THRESHOLD} --subtract {cfg.SUBTRACT} """
 
     if flagant_strrange != "":
         _bashcmd += f"""--flag-ants $flagant """
-    if dead_card is not None:
-        _bashcmd += f"""--dead-cards $dead """
+    # if dead_card is not None:
+    #     _bashcmd += f"""--dead-cards $dead """
+
+    if cfg.FLAGCHAN is not None:
+        _bashcmd += f"""--flag-chans $flagchan """
+    
+    ### add uvw update
+    _bashcmd += f"""--update-uv-blocks {cfg.UPDATE_UV_BLOCKS} """
     
     for irun, beam_strrange in enumerate(_split_beam_run(cfg.MAXBEAM)):
         bashcmd = _bashcmd + f"""--search-beams {beam_strrange} """
-        bashcmd += f"""2>&1 | tee {runoutpath}/piperun.{scan}.{ts}.{irun}.out\n"""
+        if cfg.SAVE_UVFITS:
+            bashcmd += f"""--save-uvfits-beams {beam_strrange} """
+        bashcmd += f"""2>&1 | tee {runoutpath}/piperun.{scan}.{ts}.{irun}.{runname}.out\n"""
 
         runshfname = f"{runscriptpath}/runpipe.{scan}.{ts}.{irun}.sh"
         log.info(f"write bash file to {runshfname}")
@@ -351,9 +362,12 @@ def main():
             run_prepare(values.obs, None)
             make_run(values.obs, None, values.run)
 
+        else:
+            run_prepare(values.obs, values.cal)
+            make_run(values.obs, values.cal, values.run)
     else:
-        run_prepare(values.obs, values.cal)
-        make_run(values.obs, values.cal, values.run)
+        run_prepare(values.obs, None)
+        make_run(values.obs, None, values.run)
 
 if __name__ == "__main__":
     try:
