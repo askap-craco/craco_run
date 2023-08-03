@@ -291,6 +291,10 @@ card={card_strrange}
     
     ### add uvw update
     _bashcmd += f"""--update-uv-blocks {cfg.UPDATE_UV_BLOCKS} """
+
+    ### add autoflagger
+    if cfg.AUTOFLAGGER:
+        _bashcmd += f"""--dflag-fradius {cfg.DFLAG_FRADIUS} --dflag-threshold {cfg.DFLAG_THRESH} --dflag-tblk {cfg.DFLAG_TBLK} """
     
     for irun, beam_strrange in enumerate(_split_beam_run(cfg.MAXBEAM)):
         bashcmd = _bashcmd + f"""--search-beams {beam_strrange} """
