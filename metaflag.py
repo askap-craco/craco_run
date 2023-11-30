@@ -1,4 +1,4 @@
-#!/usr/env/python
+#!/usr/bin/env python
 ### functions to get 1) bad antennas; 2) get starting and end time
 
 import numpy as np
@@ -62,9 +62,9 @@ class MetaAntFlagger:
         ### get the best ranges
         ranges_time = np.array([t[1] - t[0] for t in self.good_ranges])
         best_start, best_end = self.good_ranges[np.argmax(ranges_time)]
-        log.info(f"the best range found... {best_start} ~ {best_end}, it lasted for {int((best_end - best_start) * 86400)}s...")
+        log.info(f"the best range found... {best_start} ~ {best_end}, it lasted for {best_end - best_start} hardware samples...")
         
-        return [self.meta.times[best_start].value, self.meta.times[best_end].value]
+        return [self.meta.times[best_start].value, self.meta.times[best_end-1].value]
 
     def get_flag_ant(self):
         return list(self.badants + 1)
