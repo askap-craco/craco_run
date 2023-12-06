@@ -69,14 +69,17 @@ class MetaAntFlagger:
     def get_flag_ant(self):
         return list(self.badants + 1)
 
+    def get_stats(self):
+        self.trange = self.get_start_end_time()
+        self.badants = self.get_flag_ant()
+
 
     def run(self, dumpfname):
-        trange = self.get_start_end_time()
-        badants = self.get_flag_ant()
+        self.get_stats()
 
         metainfo = dict(
-            trange = trange.__str__(),
-            flagants = badants.__str__()
+            trange = self.trange.__str__(),
+            flagants = self.badants.__str__()
         )
         log.info(f"dumping metadata information to {dumpfname}")
         with open(dumpfname, "w") as fp:
