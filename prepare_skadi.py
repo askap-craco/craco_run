@@ -247,6 +247,9 @@ dflag_tblk={cfg.DFLAG_TBLK}
 """
             runcmd += f"""--dflag-fradius $dflag_fradius --dflag-cas-threshold $dflag_cas_threshold --dflag-tblk $dflag_tblk """
 
+            if self.values.addition:
+                runcmd += f"{self.values.addition} " # add additional parameter to it.. for example flagging
+
         bashf += f"""
 cmd={cfg.SEARCHPIPE_PATH}
 
@@ -309,7 +312,8 @@ def main():
     )
     parser.add_argument("-obs", "--obssbid", type=str, help="observation schedule block", )
     parser.add_argument("-cal", "--calsbid", type=str, help="calibration schedule block", )
-    parser.add_argument("-run", "--runname", type=str, help="runname for the pipeline run",     default="results")
+    parser.add_argument("-run", "--runname", type=str, help="runname for the pipeline run", default="results")
+    parser.add_argument("-add", "--addition", type=str, help="additional argument passed to search_pipeline", default=None)
     # parser.add_argument("-dryrun", type=bool, help="whether to run it or not", default=True)
 
     values = parser.parse_args()
