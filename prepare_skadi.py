@@ -279,7 +279,7 @@ logpath=$outdir/{scanfname}.$trun.log
         for scan in self.allscans:
             shellpath = self.write_bash_scan(scan)
             self.shellscripts.append(shellpath)
-            self.fixuvfitscmd.append(f"mpi_run_beam.sh {scan} mpi_do_fix_uvfits.sh")
+            self.fixuvfitscmd.append(f"mpi_run_beam.sh {scan} `which mpi_do_fix_uvfits.sh`")
 
         log.info("making bash files executable...")
         for i in self.shellscripts:

@@ -50,7 +50,7 @@ class CalibManager:
     def run(self):
         calscan = self._select_scan()
         self._get_meta()
-        cmd = f"""mpi_run_beam.sh {calscan} mpi_do_calibrate.sh"""
+        cmd = f"""mpi_run_beam.sh {calscan} `which mpi_do_calibrate.sh`"""
         # if self.values.dryrun:
         if False:
             log.info(f"please run  - {cmd}")
