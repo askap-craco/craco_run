@@ -13,6 +13,7 @@ from craft.cmdline import strrange
 
 from metaflag import MetaAntFlagger
 import craco_cfg as cfg
+import subprocess
 
 def _format_sbid(sbid, padding=True):
     "perform formatting for the sbid"
@@ -244,8 +245,9 @@ uvupdate={cfg.UVUPDATE_BLOCK}
 dflag_fradius={cfg.DFLAG_FRADIUS}
 dflag_cas_threshold={cfg.DFLAG_THRESH}
 dflag_tblk={cfg.DFLAG_TBLK}
+freq_flag_file={cfg.FREQ_FLAG_FILE}
 """
-            runcmd += f"""--dflag-fradius $dflag_fradius --dflag-cas-threshold $dflag_cas_threshold --dflag-tblk $dflag_tblk """
+            runcmd += f"""--dflag-fradius $dflag_fradius --dflag-cas-threshold $dflag_cas_threshold --dflag-tblk $dflag_tblk --flag-frequency-file $freq_flag_file"""
 
             if self.values.addition:
                 runcmd += f"{self.values.addition} " # add additional parameter to it.. for example flagging
@@ -276,10 +278,12 @@ logpath=$outdir/{scanfname}.$trun.log
 
         self.shellscripts = []
         self.fixuvfitscmd = []
+        self.summarisecmds = []
         for scan in self.allscans:
             shellpath = self.write_bash_scan(scan)
             self.shellscripts.append(shellpath)
             self.fixuvfitscmd.append(f"mpi_run_beam.sh {scan} `which mpi_do_fix_uvfits.sh`")
+            self.summarisecmds.append(f"/CRACO/SOFTWARE/craco/craftop/softwares/craco_run/run_summarise.sh {scan}")
 
         log.info("making bash files executable...")
         for i in self.shellscripts:
@@ -295,9 +299,14 @@ logpath=$outdir/{scanfname}.$trun.log
         # if not self.values.dryrun:
         if True:
             log.info("executing bash scripts...")
-            for tspcmd in tspcmds:
+            for tspcmd, summarisecmd in zip(tspcmds, self.summarisecmds):
                 log.info(f"running {tspcmd}")
-                os.system(tspcmd)
+                
+                p = subprocess.run([tspcmd], shell=True, capture_output=True, text=True)
+                tsp_jobid = int(p.stdout.strip())
+                #summarise_tsp_cmd = f"tsp -D {tsp_jobid} {summarisecmd}"
+                summarise_tsp_cmd = f"tsp {summarisecmd}"
+                os.system(summarise_tsp_cmd)
 
         else:
             log.info("it will execute the following commands")
