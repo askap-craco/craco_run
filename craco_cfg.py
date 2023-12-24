@@ -4,6 +4,10 @@ THRESHOLD           =       6                   # threshold for search pipeline
 FLAGANT             =       "25-30"             # antenna to be flagged 
 UPDATE_UV_BLOCKS    =       12                  # update uv coordinates every Nxnt (256 by default)
 
+
+# Fixed flagging parameters
+FREQ_FLAG_FILE      =       "/home/craftop/share/fixed_freq_flags.txt"
+
 # flagger related parameters
 AUTOFLAGGER         =       True                # turn on/off the auto IQRM flagger
 DFLAG_FRADIUS       =       180                  # suggested by Vivek, 64
