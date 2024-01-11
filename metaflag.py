@@ -1,14 +1,36 @@
 #!/usr/bin/env python
 ### functions to get 1) bad antennas; 2) get starting and end time
 
+from scipy.interpolate import interp1d
+
 import numpy as np
 import logging
 import json
+import re
 
 from craco.metadatafile import MetadataFile 
+from craco.datadirs import SchedDir, ScanDir
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+def get_mjd_start_from_uvfits_header(fname, hdr_size = 16384):
+    """
+    load PZERO4 from fits header directly
+    """
+    with open(fname, 'rb') as o:
+        raw_h = o.read(hdr_size)
+    pattern = "PZERO4\s*=\s*(\d+.\d+)\s*"
+    matches = re.findall(pattern, str(raw_h))
+    if len(matches) !=1:
+        raise RuntimeError(f"Something went wrong when looking for mjd start in the header, I used this regex - {pattern}")
+
+    jd_start = float(matches[0])
+    mjd_start = jd_start - 2400000.5
+    if 50000 < mjd_start < 80000:
+        return mjd_start
+    else:
+        raise RuntimeError(f"I found a really unexpected value of MJD start from the UVfits header - {mjd_start}")
 
 def find_true_range(bool_array):
     """
@@ -32,8 +54,13 @@ class MetaAntFlagger:
         ### get basic information
         self._get_info()
         self.badants = self._find_bad_ant(fraction=fraction)
+        ### make it to a list
+        self.badants = list(self.badants + 1)
         log.info(f"finding {len(self.badants)} bad antennas...")
         self._find_good_ranges()
+
+        ### get flag interp
+        self._get_flag_interp()
         
         
     def _get_info(self):
@@ -51,8 +78,40 @@ class MetaAntFlagger:
     def _find_good_ranges(self):
         flagtimesum = self.antflags.sum(axis=1) - len(self.badants)
         good_bool = flagtimesum == 0
+        self.good_bool = good_bool
         self.good_ranges = find_true_range(good_bool)
 
+    # @property
+    def _get_flag_interp(self):
+        """
+        self.meta.times.value - the times in the metadata file
+        self.good_bool - corresponding flag values
+        """
+        self.flag_interp = interp1d(
+            self.meta.times.value, self.good_bool,
+            kind="previous", axis=0, bounds_error=True, copy=False,
+        )
+
+    def _check_good(self, mjd):
+        """check if the data is flagged with a given mjd"""
+        try:
+            return self.flag_interp(mjd) == 1.
+        except:
+            log.info(f"error raised when interpolating data... mjd = {mjd}")
+            return False
+
+    def find_startmjd(self, mjd):
+        """
+        work out the start mjd with a given mjd
+        """
+        if self._check_good(mjd): return 0 # 0 should be fine, or any small number
+
+        log.info(f"mjd - {mjd} is not a good startmjd... finding the good one")
+        times = self.meta.times.value
+        bools = self.good_bool
+        for i in np.where(times > mjd)[0]:
+            if bools[i]: return times[i]
+        return None
         
     ### get range of time
     def get_start_end_time(self):
@@ -66,12 +125,12 @@ class MetaAntFlagger:
         
         return [self.meta.times[best_start].value, self.meta.times[best_end-1].value]
 
-    def get_flag_ant(self):
-        return list(self.badants + 1)
+    # def get_flag_ant(self):
+    #     return list(self.badants + 1)
 
     def get_stats(self):
         self.trange = self.get_start_end_time()
-        self.badants = self.get_flag_ant()
+        # self.badants = self.get_flag_ant()
 
 
     def run(self, dumpfname):
@@ -85,6 +144,35 @@ class MetaAntFlagger:
         with open(dumpfname, "w") as fp:
             json.dump(metainfo, fp, indent=4)
 
+    def _run(self, sbid, dumpfname=None):
+        ### this _run function is used for scan specified tstart
+        self.get_stats()
+
+        startmjd = {}
+        scheddir = SchedDir(sbid)
+        for scan in scheddir.scans:
+            scandir = ScanDir(sbid=scheddir.sbid, scan=scan)
+            try:
+                uvfitspath = scandir.uvfits_paths[0]
+            except:
+                log.info(f"no uvfits file found in {sbid} - {scan}...")
+                continue
+            
+            uvfitsmjd = get_mjd_start_from_uvfits_header(uvfitspath)
+            startmjd[scan] = str(self.find_startmjd(uvfitsmjd))
+
+        metainfo = dict(
+            startmjd = startmjd,
+            flagants = self.badants.__str__()
+        )
+
+        if dumpfname is not None:
+            log.info(f"dumping metadata information to {dumpfname}")
+            with open(dumpfname, "w") as fp:
+                json.dump(metainfo, fp, indent=4)
+
+        return metainfo
+            
 def main():
     from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
     parser = ArgumentParser(
