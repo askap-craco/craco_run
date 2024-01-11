@@ -108,7 +108,7 @@ class CalLinker:
             # make the link in the headnode to keep track everything
             log.debug(f"linking calibration solution for node{node}...")
             lncmd = f"ln -s {cal_dir} {self._get_runcal_dir(node)}"
-            log.debug(f"executing {lncmd}...")
+            log.info(f"executing {lncmd}...")
             os.system(lncmd)
     
     def run(self):
@@ -147,6 +147,7 @@ class MetaManger:
 
         dumpfname = f"{self.workdir}/{self.obssbid}.antflag.json"
         self.metaantflag.run(dumpfname)
+        # self.metaantflag._run(self.obssbid, dumpfname)
 
         ### note there are information useful in this self.metaantflag
 
@@ -247,7 +248,11 @@ dflag_cas_threshold={cfg.DFLAG_THRESH}
 dflag_tblk={cfg.DFLAG_TBLK}
 freq_flag_file={cfg.FREQ_FLAG_FILE}
 """
-            runcmd += f"""--dflag-fradius $dflag_fradius --dflag-cas-threshold $dflag_cas_threshold --dflag-tblk $dflag_tblk --flag-frequency-file $freq_flag_file"""
+            runcmd += f"""--dflag-fradius $dflag_fradius --dflag-cas-threshold $dflag_cas_threshold --dflag-tblk $dflag_tblk --flag-frequency-file $freq_flag_file """
+
+            if self.values.injection:
+                assert os.path.exists(self.values.injection), f"Injection file - {self.values.injection} does not exist"
+                runcmd += f" --injection-file {self.values.injection} "
 
             if self.values.addition:
                 runcmd += f"{self.values.addition} " # add additional parameter to it.. for example flagging
@@ -279,8 +284,19 @@ logpath=$outdir/{scanfname}.$trun.log
         self.shellscripts = []
         self.fixuvfitscmd = []
         self.summarisecmds = []
-        for scan in self.allscans:
+        nqueues = self.values.nqueues
+        environments = []
+        commands = []
+        for iscan, scan in enumerate(self.allscans):
+            iqueue = int(self.values.obssbid) % nqueues
             shellpath = self.write_bash_scan(scan)
+            environments.append({
+                'TS_SOCKET':f'/data/craco/craco/tmpdir/queues/{iqueue}',
+                'START_CARD':str(iqueue*2),
+                'RUNNAME':self.runname
+            })
+            commands.append(f'./do_search_and_summarise.sh {scan} {shellpath} {self.runname}')
+            
             self.shellscripts.append(shellpath)
             self.fixuvfitscmd.append(f"mpi_run_beam.sh {scan} `which mpi_do_fix_uvfits.sh`")
             self.summarisecmds.append(f"/CRACO/SOFTWARE/craco/craftop/softwares/craco_run/run_summarise.sh {scan}")
@@ -290,28 +306,19 @@ logpath=$outdir/{scanfname}.$trun.log
             chmodcmd = f"chmod +x {i}"
             os.system(chmodcmd)
 
-        ### fixuvfits...
-        log.info("fixing uvfits...")
-        for fixuvfitscmd in self.fixuvfitscmd:
-            os.system(f"tsp {fixuvfitscmd}")
+        tspcmds = [f"tsp {cmd}" for cmd in commands]
 
-        tspcmds = [f"tsp {i}" for i in self.shellscripts]
-        # if not self.values.dryrun:
-        if True:
-            log.info("executing bash scripts...")
-            for tspcmd, summarisecmd in zip(tspcmds, self.summarisecmds):
-                log.info(f"running {tspcmd}")
-                
-                p = subprocess.run([tspcmd], shell=True, capture_output=True, text=True)
+        log.info("executing bash scripts...")
+        for tspcmd, environment in zip(tspcmds, environments):
+            log.info(f"running {tspcmd} with evironment {environment}")
+            if not self.values.dryrun:
+                ecopy = os.environ.copy()
+                ecopy.update(environment)
+                p = subprocess.run([tspcmd], shell=True, capture_output=True, text=True, env=ecopy)
                 tsp_jobid = int(p.stdout.strip())
-                #summarise_tsp_cmd = f"tsp -D {tsp_jobid} {summarisecmd}"
-                summarise_tsp_cmd = f"tsp {summarisecmd}"
-                os.system(summarise_tsp_cmd)
-
-        else:
-            log.info("it will execute the following commands")
-            for tspcmd in tspcmds:
-                log.info(f"- {tspcmd}")
+            #summarise_tsp_cmd = f"tsp -D {tsp_jobid} {summarisecmd}"
+            #summarise_tsp_cmd = f"tsp {summarisecmd}"
+            #os.system(summarise_tsp_cmd)
 
 def main():
     from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
@@ -319,11 +326,13 @@ def main():
         description="write pipeline run bash scripts...", 
         formatter_class=ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("-obs", "--obssbid", type=str, help="observation schedule block", )
-    parser.add_argument("-cal", "--calsbid", type=str, help="calibration schedule block", )
+    parser.add_argument("-obs", "--obssbid", type=int, help="observation schedule block", )
+    parser.add_argument("-cal", "--calsbid", type=int, help="calibration schedule block", )
     parser.add_argument("-run", "--runname", type=str, help="runname for the pipeline run", default="results")
+    parser.add_argument("-inj", "--injection", type=str, help="injection file to be used", default=None)
     parser.add_argument("-add", "--addition", type=str, help="additional argument passed to search_pipeline", default=None)
-    # parser.add_argument("-dryrun", type=bool, help="whether to run it or not", default=True)
+    parser.add_argument("-dryrun", '--dryrun', help="whether to run it or not", default=False, action='store_true')
+    parser.add_argument('--nqueues', help='Number of queues to send jobs to', default=1, type=int)
 
     values = parser.parse_args()
 
