@@ -146,8 +146,8 @@ class MetaManger:
         )
 
         dumpfname = f"{self.workdir}/{self.obssbid}.antflag.json"
-        self.metaantflag.run(dumpfname)
-        # self.metaantflag._run(self.obssbid, dumpfname)
+        # self.metaantflag.run(dumpfname)
+        self.metaantflag._run(self.obssbid, dumpfname)
 
         ### note there are information useful in this self.metaantflag
 
@@ -204,7 +204,8 @@ class ExecuteManager:
         self.flagant = intlst_to_strrange(set(flagant))
 
     def __get_start_mjd(self, ):
-        self.startmjd = self.metamanage.metaantflag.trange[0]
+        # self.startmjd = self.metamanage.metaantflag.trange[0]
+        self.startmjds = self.metamanage.metaantflag.startmjds # it is a dictionary
 
     def format_scanrun_name(self, scan, ):
         trun = get_timestamp()
@@ -217,6 +218,13 @@ class ExecuteManager:
     def write_bash_scan(self, scan):
         scanfname = self.format_scanrun_name(scan)
         shfname = f"run.{scanfname}.sh"
+
+        ### get a scan to retreive information from self.startmjds
+        shortscan = "/".join(scan.split("/")[-2:])
+        try: startmjd = eval(self.startmjds[shortscan])
+        except: startmjd = 0
+
+        if startmjd is None: startmjd = 0
 
         bashf = f"""#!/bin/bash
 
@@ -236,7 +244,7 @@ outdir=$indir/$runname
 
         bashf += f"""cmd={cfg.SEARCHPIPE_PATH}
 ndm={cfg.NDM}
-startmjd={self.startmjd}
+startmjd={startmjd}
 uvupdate={cfg.UVUPDATE_BLOCK}
 """
 
@@ -289,7 +297,7 @@ logpath=$outdir/{scanfname}.$trun.log
         commands = []
         for iscan, scan in enumerate(self.allscans):
             iqueue = int(self.values.obssbid) % nqueues
-            shellpath = self.write_bash_scan(scan)
+            shellpath = self.write_bash_scan(scan) # note scan is /data/craco/craco/SB0xxxxx/...
             environments.append({
                 'TS_SOCKET':f'/data/craco/craco/tmpdir/queues/{iqueue}',
                 'START_CARD':str(iqueue*2),

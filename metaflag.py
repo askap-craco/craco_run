@@ -46,7 +46,7 @@ def find_true_range(bool_array):
 
 class MetaAntFlagger:
     
-    def __init__(self, metafile, fraction=0.8):
+    def __init__(self, metafile, sbid=None, fraction=0.8):
         log.info(f"loading metadata file from {metafile}")
         self.meta = MetadataFile(metafile)
         self.antflags = self.meta.antflags
@@ -134,6 +134,9 @@ class MetaAntFlagger:
 
 
     def run(self, dumpfname):
+        """
+        note - we won't use it recently
+        """
         self.get_stats()
 
         metainfo = dict(
@@ -146,7 +149,7 @@ class MetaAntFlagger:
 
     def _run(self, sbid, dumpfname=None):
         ### this _run function is used for scan specified tstart
-        self.get_stats()
+        # self.get_stats()
 
         startmjd = {}
         scheddir = SchedDir(sbid)
@@ -156,10 +159,13 @@ class MetaAntFlagger:
                 uvfitspath = scandir.uvfits_paths[0]
             except:
                 log.info(f"no uvfits file found in {sbid} - {scan}...")
+                startmjd[scan] = str(None)
                 continue
             
             uvfitsmjd = get_mjd_start_from_uvfits_header(uvfitspath)
             startmjd[scan] = str(self.find_startmjd(uvfitsmjd))
+
+        self.startmjds = startmjd # store startmjd values for prepare skadi
 
         metainfo = dict(
             startmjd = startmjd,
