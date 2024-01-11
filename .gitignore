@@ -1,0 +1,7 @@
+__pycache__
+
+.nfs*
+core*
+*.sh~
+.gitignore
+template.py
