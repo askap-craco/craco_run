@@ -41,10 +41,11 @@ def main(args):
     if args.dry:
         log.info("I've been invoked in the dry run mode!")
     sbid = parse_sbid(args.sbid)
+    log.info(f"Working with {sbid}")
     root_regex = f"/CRACO/DATA_?[0-9^8]/craco/{sbid}"
     keepfile=f'/CRACO/DATA_00/craco/{sbid}/KEEP'
     if os.path.exists(keepfile):
-        print(f'{sbid} contains KEEP file. ignoring')
+        log.info(f'{sbid} contains KEEP file. ignoring')
         return
     
     root_paths = glob.glob(root_regex)
@@ -54,6 +55,8 @@ def main(args):
         for root_path in root_paths:
             node_name = root_path.strip().split("/")[2]
             if node_name == "DATA_00":
+                if len(root_paths) == 1:
+                    log.info(f"No data directories exist on any of the SKADI nodes (except SKADI_0) for the requested SBID - {sbid}")
                 continue
             
             uvfits_regex = os.path.join(root_path, "scans/??/202*/b??.uvfits")
