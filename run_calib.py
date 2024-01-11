@@ -40,7 +40,13 @@ class CalibManager:
     def _select_scan(self, random=False):
         if random:
             raise NotImplementedError("random scan not supported...")
-        return self.allscans[0]
+        
+        if len(self.allscans) > 10:
+            print(f"Using scan - {self.allscans[10]}")
+            return self.allscans[10]
+
+        else:
+            return self.allscans[0]
 
     def copy_solution(self):
         copycal_path = "/CRACO/SOFTWARE/craco/wan342/Software/craco_run/copycal.py"
