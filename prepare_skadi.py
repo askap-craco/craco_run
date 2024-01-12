@@ -130,7 +130,7 @@ class CalLinker:
         self.clean_cal()
         self.link_cal()
 
-class MetaManger:
+class MetaManager:
     """
     class to manage all metadata files
     """
@@ -177,7 +177,7 @@ class ExecuteManager:
     ### can we include calibration here as well?
     def __init__(self, values):
         self.callinker = CalLinker(values.obssbid, values.calsbid)
-        self.metamanage = MetaManger(values.obssbid)
+        self.metamanage = MetaManager(values.obssbid)
         self.obssbid = _format_sbid(values.obssbid, padding=True)
         self.runname = values.runname
 
@@ -372,8 +372,8 @@ def main():
 
     values = parser.parse_args()
 
-    execmanger = ExecuteManager(values)
-    execmanger.run()
+    execmanager = ExecuteManager(values)
+    execmanager.run()
 
 
 if __name__ == "__main__":
