@@ -7,9 +7,11 @@ logging.basicConfig(level=logging.INFO)
 
 import glob
 import os
+import re
 from datetime import datetime
 
 from craft.cmdline import strrange
+from craco.datadirs import SchedDir, ScanDir
 
 from metaflag import MetaAntFlagger
 import craco_cfg as cfg
@@ -54,6 +56,19 @@ def make_dir(path):
     if not os.path.exists(path):
         log.info(f"making new directories... {path}")
         os.makedirs(path)
+
+def get_nchan_from_uvfits_header(fname, hdr_size = 16384):
+    with open(fname, 'rb') as o:
+        raw_h = o.read(hdr_size)
+    pattern = "NAXIS4\s*=\s*(\d+.\d+)\s*"
+    matches = re.findall(pattern, str(raw_h))
+    if len(matches) !=1:
+        raise RuntimeError(f"Something went wrong when looking for nchan in the header, I used this regex - {pattern}")
+
+    nchan = int(float(matches[0]))
+    if nchan < 300: return nchan
+    raise RuntimeError(f"I found a really unexpected value of nchan from uvfits header - {nchan}")
+
 
 ####### this part is used to make symbolic link to the calibration #######
 '''
@@ -207,6 +222,12 @@ class ExecuteManager:
         # self.startmjd = self.metamanage.metaantflag.trange[0]
         self.startmjds = self.metamanage.metaantflag.startmjds # it is a dictionary
 
+    def __get_scan_nchan(self, scan):
+        scandir = ScanDir(sbid=self.obssbid, scan=scan)
+        uvfitspath = scandir.uvfits_paths[0]
+        nchan = get_nchan_from_uvfits_header(uvfitspath)
+        return nchan
+
     def format_scanrun_name(self, scan, ):
         trun = get_timestamp()
         scanlst = scan.split("/")
@@ -242,8 +263,15 @@ outdir=$indir/$runname
             bashf += f"""flagant={self.flagant}\n"""
             runcmd += f"""--flag-ants $flagant """
 
+        ### check ndm
+        if isinstance(cfg.NDM, int) or isinstance(cfg.NDM, float):
+            ndm = cfg.NDM
+        else:
+            nchan = self.__get_scan_nchan(shortscan)
+            ndm = nchan - 30 # hard coded here for now!
+
         bashf += f"""cmd={cfg.SEARCHPIPE_PATH}
-ndm={cfg.NDM}
+ndm={ndm}
 startmjd={startmjd}
 uvupdate={cfg.UVUPDATE_BLOCK}
 """

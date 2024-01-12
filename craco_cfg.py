@@ -1,5 +1,5 @@
 # configuration file for running on skadi
-NDM                 =       250                 # number of DM trials
+NDM                 =       "auto"                 # number of DM trials
 THRESHOLD           =       6                   # threshold for search pipeline
 FLAGANT             =       "25-30"             # antenna to be flagged 
 UPDATE_UV_BLOCKS    =       12                  # update uv coordinates every Nxnt (256 by default)
