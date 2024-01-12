@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO)
 import os
 import glob
 
-from prepare_skadi import MetaManger
+from prepare_skadi import MetaManager
 
 def _format_sbid(sbid, padding=True):
     "perform formatting for the sbid"
@@ -34,7 +34,7 @@ class CalibManager:
         self.allscans = sorted(glob.glob(scanpattern))
 
     def _get_meta(self):
-        metamanager = MetaManger(self.values.calsbid)
+        metamanager = MetaManager(self.values.calsbid)
         metamanager._get_tethys_metadata()
 
     def _select_scan(self, random=False):
