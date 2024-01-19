@@ -7,8 +7,12 @@ logging.basicConfig(level=logging.INFO)
 
 import os
 import glob
+import numpy as np
+
+from craco.datadirs import SchedDir, ScanDir
 
 from prepare_skadi import MetaManager
+from metaflag import MetaAntFlagger
 
 def _format_sbid(sbid, padding=True):
     "perform formatting for the sbid"
@@ -24,6 +28,7 @@ class CalibManager:
     """
     def __init__(self, values):
         self.calsbid = _format_sbid(values.calsbid)
+        self.scheddir = SchedDir(sbid=self.calsbid)
         self.__get_all_scans()
 
         self.values = values # again... as a backup
@@ -31,11 +36,33 @@ class CalibManager:
     ### find scans...
     def __get_all_scans(self, ):
         scanpattern = f"/data/craco/craco/{self.calsbid}/scans/??/??????????????"
-        self.allscans = sorted(glob.glob(scanpattern))
+        scans = sorted(glob.glob(scanpattern))
+        self.allscans = [scan for scan in scans if self.__filter_scan(scan)]
+        # self.allscans = sorted(glob.glob(scanpattern))
+
+    def __filter_scan(self, scan):
+        """
+        based on the scan, check whether there are 36 uvfits file...
+        """
+        scan = "/".join(scan.split("/")[-2:])
+        scandir = ScanDir(sbid=self.calsbid, scan=scan)
+        uvfits_exists = scandir.uvfits_paths_exists
+        if len(uvfits_exists) < 36: 
+            log.warning(f"there are less than 36 uvfits file in {scan}")
+            return False # need all beams exists
+
+        uvfits_size = np.array([os.path.getsize(path) / (1024 ** 3) for path in uvfits_exists])
+        if np.any(uvfits_size < 3): 
+            log.warning(f"the file size is too small for {scan}...")
+            return False # if the size is too small aborted..
+        return True
 
     def _get_meta(self):
         metamanager = MetaManager(self.values.calsbid)
         metamanager._get_tethys_metadata()
+        metamanager._get_flagger_info()
+        log.info("loading flag information from metadata...")
+        self.startmjds = metamanager.metaantflag.startmjds
 
     def _select_scan(self, random=False):
         if random:
@@ -56,7 +83,13 @@ class CalibManager:
     def run(self):
         calscan = self._select_scan()
         self._get_meta()
-        cmd = f"""mpi_run_beam.sh {calscan} `which mpi_do_calibrate.sh`"""
+
+        ### load startmjd to use for calibration
+        shortscan = "/".join(calscan.split("/")[-2:])
+        try: startmjd = eval(self.startmjds[shortscan])
+        except: startmjd = 0
+
+        cmd = f"""mpi_run_beam.sh {calscan} `which mpi_do_calibrate.sh` --start-mjd {startmjd}"""
         # if self.values.dryrun:
         if False:
             log.info(f"please run  - {cmd}")
