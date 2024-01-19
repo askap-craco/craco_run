@@ -7,6 +7,7 @@ import numpy as np
 import logging
 import json
 import re
+import os
 
 from craco.metadatafile import MetadataFile 
 from craco.datadirs import SchedDir, ScanDir
@@ -155,10 +156,9 @@ class MetaAntFlagger:
         scheddir = SchedDir(sbid)
         for scan in scheddir.scans:
             scandir = ScanDir(sbid=scheddir.sbid, scan=scan)
-            try:
-                uvfitspath = scandir.uvfits_paths[0]
-            except:
-                log.info(f"no uvfits file found in {sbid} - {scan}...")
+            uvfitspath = scandir.uvfits_paths[0]
+            if not os.path.exists(uvfitspath):
+                log.info(f"{uvfitspath} not found... use None to continue...")
                 startmjd[scan] = str(None)
                 continue
             
