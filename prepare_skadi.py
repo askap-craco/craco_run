@@ -225,8 +225,11 @@ class ExecuteManager:
     def __get_scan_nchan(self, scan):
         scandir = ScanDir(sbid=self.obssbid, scan=scan)
         uvfitspath = scandir.uvfits_paths[0]
-        nchan = get_nchan_from_uvfits_header(uvfitspath)
-        return nchan
+        try:
+            nchan = get_nchan_from_uvfits_header(uvfitspath)
+            return nchan
+        except:
+            return 288
 
     def format_scanrun_name(self, scan, ):
         trun = get_timestamp()
