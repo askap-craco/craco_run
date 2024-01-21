@@ -17,6 +17,8 @@ from metaflag import MetaAntFlagger
 import craco_cfg as cfg
 import subprocess
 
+from auto_sched import push_sbid_execution
+
 def _format_sbid(sbid, padding=True):
     "perform formatting for the sbid"
     if isinstance(sbid, int): sbid = str(sbid)
@@ -331,6 +333,7 @@ logpath=$outdir/{scanfname}.$trun.log
             shellpath = self.write_bash_scan(scan) # note scan is /data/craco/craco/SB0xxxxx/...
             environments.append({
                 'TS_SOCKET':f'/data/craco/craco/tmpdir/queues/{iqueue}',
+                'TS_ONFINISH': {cfg.PIPE_TS_ONFINISH}
                 'START_CARD':str(iqueue*2),
                 'RUNNAME':self.runname
             })
@@ -375,6 +378,15 @@ def main():
 
     values = parser.parse_args()
 
+    log.info("updating execution database...")
+    try: 
+        push_sbid_execution(
+            sbid=values.obssbid, calsbid=values.calsbid, 
+            runname=values.runname, reset=True,
+        )
+    except Exception as error:
+        log.info(f"failed to push new update to database... with the following error message - {error}")
+        
     execmanager = ExecuteManager(values)
     execmanager.run()
 

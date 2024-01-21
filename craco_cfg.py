@@ -18,3 +18,7 @@ UVUPDATE_BLOCK      =       12                  # update uvw every 12 block
 # parameter that does not change a lot
 PC_FILTERBANK       =       "pc.fil"
 SEARCHPIPE_PATH     =       "`which mpi_do_search_pipeline.sh`"
+
+
+# task spooler related
+PIPE_TS_ONFINISH    =       "/CRACO/DATA_00/craco/wan342/craco_run/ts_piperun_call.py"
