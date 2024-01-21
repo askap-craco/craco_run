@@ -26,7 +26,7 @@ def load_config(config="database.ini", section="postgresql"):
     parser.read(config)
 
     if not parser.has_section(section):
-        raise ValueError(f"Section {section} not found in {filename}")
+        raise ValueError(f"Section {section} not found in {config}")
     params = parser.items(section)
     return {k:v for k, v in params}
 
@@ -590,7 +590,7 @@ class CalSolBeam:
 
 ########### FOR execution ###############
 
-def push_sbid_execution(sbid, runname="results", calsbid=None, status=0):
+def push_sbid_execution(sbid, runname="results", calsbid=None, reset=False, newstatus=0):
     scheddir = SchedDir(sbid)
 
     ### get calibration sbid
@@ -616,10 +616,11 @@ def push_sbid_execution(sbid, runname="results", calsbid=None, status=0):
     ### start to update database
     conn = get_psql_connet()
     cur = conn.cursor()
-    cur.execute(f"SELECT * FROM execution WHERE SBID={sbid} AND RUNNAME='{runname}'")
+    cur.execute(f"SELECT sbid, status FROM execution WHERE SBID={sbid} AND RUNNAME='{runname}'")
     
     res = cur.fetchall()
     if len(res) == 0: # insert
+        status = 0 # set the original status to 0
         insert_sql = f"""INSERT INTO execution (
     sbid, calsbid, status, scans, rawfiles, clustfiles, runname
 )
@@ -631,6 +632,12 @@ VALUES (
         conn.commit()
         
     else:
+        ### if reset is True, you need to set status to 0
+        if reset: status = 0
+        else:
+            previous_status = res[0][1]
+            status = previous_status + newstatus
+        
         update_sql = f"""UPDATE execution
 SET calsbid={calsbid}, status={status}, scans={scans}, 
 rawfiles={rawfile_count}, clustfiles={clusfile_count}
