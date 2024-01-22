@@ -333,7 +333,7 @@ logpath=$outdir/{scanfname}.$trun.log
             shellpath = self.write_bash_scan(scan) # note scan is /data/craco/craco/SB0xxxxx/...
             environments.append({
                 'TS_SOCKET':f'/data/craco/craco/tmpdir/queues/{iqueue}',
-                'TS_ONFINISH': {cfg.PIPE_TS_ONFINISH},
+                'TS_ONFINISH': f"{cfg.PIPE_TS_ONFINISH}",
                 'START_CARD':str(iqueue*2),
                 'RUNNAME':self.runname
             })

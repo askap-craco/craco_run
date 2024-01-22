@@ -21,5 +21,5 @@ SEARCHPIPE_PATH     =       "`which mpi_do_search_pipeline.sh`"
 
 
 # task spooler related
-PIPE_TS_ONFINISH    =       "/CRACO/DATA_00/craco/wan342/craco_run/ts_piperun_call.py"
-CAL_TS_ONFINISH     =       "/CRACO/DATA_00/craco/wan342/craco_run/ts_calibration_call.py"
+PIPE_TS_ONFINISH    =       "/CRACO/SOFTWARE/craco/craftop/softwares/craco_run/ts_piperun_call.py"
+CAL_TS_ONFINISH     =       "/CRACO/SOFTWARE/craco/craftop/softwares/craco_run/ts_calibration_call.py"
