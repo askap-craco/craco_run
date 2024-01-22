@@ -32,7 +32,7 @@ def load_config(config="database.ini", section="postgresql"):
 
 ### load sql
 import psycopg2
-def get_psql_connet():
+def get_psql_connect():
     config = load_config()
     return psycopg2.connect(**config)
 
@@ -368,14 +368,14 @@ WHERE sbid={sbid}
 
 ############# FOR CALIBRATION ##################
 
-def push_sbid_calibration(sbid, prepare=True, plot=True):
+def push_sbid_calibration(sbid, prepare=True, plot=True, updateobs=False):
     """
     add calibration information to the database
     """
     if int(sbid) == 0: return
     log.info(f"loading calibration for {sbid}")
     
-    conn = get_psql_connet()
+    conn = get_psql_connect()
     cur = conn.cursor()
     
     calcls = CracoCalSol(sbid)
@@ -394,7 +394,26 @@ def push_sbid_calibration(sbid, prepare=True, plot=True):
             log.info(f"error message - {err}")
             valid, goodant, goodbeam = False, 0, 0
             status = 2 # something goes run
-        
+    
+    if updateobs:
+        ### this means we also update the observation table
+        try:
+            ### check whether we need to update
+            update = False
+            if status == 0 and valid == False:
+                update = True; calib_rank = -2 # this means bad calibration
+            if status == 2:
+                update = True; calib_rank = -3 # we cannot load quality
+
+            if update:
+                log.info(f"updating observation table - {sbid}")
+                update_table_single_entry(
+                    int(sbid), "calib_rank", 
+                    calib_rank, "observation",
+                    conn=conn, cur=cur,
+                )
+        except Exception as error:
+            log.warning(f"cannot update observation table - error - {error}")
     
     cur.execute(f"SELECT * FROM calibration WHERE SBID={sbid}")
     res = cur.fetchall()
@@ -421,6 +440,30 @@ WHERE sbid={sbid}
     conn.close()
 
 
+################### THIS IS THE TEST CLASS FOR DEBUGGING ###################
+
+def get_random_num():
+    return np.random.uniform()
+
+class CracoCalSol:
+    def __init__(self, sbid):
+        self.sbid  = sbid
+
+        ### get solnum
+        rand = get_random_num()
+        if rand < 0.95: self.solnum = 36
+        else: self.solnum
+    
+    def rank_calsol(self, plot=True):
+        if self.solnum == 35:
+            return False, 26, 35
+        rand = get_random_num()
+        if rand < 0.8: return True, 30, 36
+        return False, 28, 35
+
+############################################################################
+
+'''
 class CracoCalSol:
     def __init__(
         self, sbid, flagfile="/home/craftop/share/fixed_freq_flags.txt"
@@ -587,6 +630,7 @@ class CalSolBeam:
         if unflagchan is not None:  phdif = phdif[:, unflagchan]
         return phdif
 
+'''
 
 ########### FOR execution ###############
 
@@ -614,7 +658,7 @@ def push_sbid_execution(sbid, runname="results", calsbid=None, reset=False, news
             continue
             
     ### start to update database
-    conn = get_psql_connet()
+    conn = get_psql_connect()
     cur = conn.cursor()
     cur.execute(f"SELECT sbid, status FROM execution WHERE SBID={sbid} AND RUNNAME='{runname}'")
     
@@ -647,3 +691,111 @@ WHERE sbid={sbid} AND runname='{runname}'
         conn.commit()
         
     conn.close()
+
+### update observation table
+def update_table_single_entry(sbid, column, value, table, conn=None, cur=None,):
+    if conn is None:
+        conn = get_psql_connect()
+    if cur is None:
+        cur = conn.cursor()
+
+    if isinstance(value, str):
+        value = f"""'{value}'"""
+    ### update part not if there is nothing if we update nothing
+    updatesql = f"""UPDATE {table}
+SET {column}={value} WHERE sbid={sbid}
+"""
+    cur.execute(updatesql)
+    conn.commit()
+
+
+#### function to pick up correct calibration
+def _flagant_str_to_lst(flagantstr):
+    if flagantstr.lower() == "none": return None
+    if flagantstr == "": return []  
+    return [int(i) for i in flagantstr.split(",")]
+
+def check_calib_flagant(calflagant, obsflagant):
+    """
+    check whether the calibration is suitable for calibration
+    this assume that both `calflagant` and `obsflagant` are string
+
+    if there is any calflagant *NOT* in obsflagant, then return False
+    otherwise True
+    """
+    calflagant = _flagant_str_to_lst(calflagant)
+    obsflagant = _flagant_str_to_lst(obsflagant)
+
+    # the easiest assertion, if calflag is more than obsflag, return False
+    if calflagant is None: 
+        log.warning("no flagantenna information found for calibration sbid...")
+        return False
+    
+    assert obsflagant is not None, "flagant info for observation sbid is missing..."
+    calflagant = set(calflagant); obsflagant = set(obsflagant)
+
+    if len(calflagant - obsflagant) == 0: return True
+    return False
+
+class CalFinder:
+    def __init__(self, sbid):
+        self.sbid = sbid
+
+        self.conn = get_psql_connect()
+        self.cur = self.conn.cursor()
+        self.engine = get_psql_engine()
+
+        self.__get_sbid_property()
+
+    def __get_sbid_property(self):
+        self.cur.execute(f"""select central_freq,footprint,weightsched,start_time,flagant from observation
+where sbid={self.sbid}""")
+        res = self.cur.fetchall()
+        assert len(res) == 1, f"found {len(res)} records in observation database for {self.sbid}..."
+        self.freq, self.footprint, self.weight_sched, self.start_time, self.flagant = res[0]
+
+    def query_calib_table(self, timethreshold=1.5):
+        """
+        query calibration table to find the most appropriate sbid
+
+        it will return calibration sbid, and calibration status (just in case something is running)
+        """
+        joinsql = f"""SELECT o.sbid,o.flagant,c.status
+FROM calibration c JOIN observation o ON c.sbid=o.sbid
+WHERE o.weightsched={self.weight_sched} AND o.central_freq={self.freq} AND o.footprint='{self.footprint}' 
+AND ((c.valid=True AND c.solnum=36 AND c.status=0) OR c.status=1)
+AND o.start_time>={self.start_time-timethreshold} AND o.start_time<={self.start_time+timethreshold}
+ORDER BY o.sbid DESC
+"""
+        self.cur.execute(joinsql)
+        query_result = self.cur.fetchall()
+        log.info(f"{len(query_result)} calibration records found in the database...")
+
+        ### check whether flags are useful
+        for calsbid, calflagant, calstatus in query_result:
+            flagcheck = check_calib_flagant(calflagant, self.flagant)
+            if flagcheck: return calsbid, calstatus
+        return None, None
+    
+    def query_observe_table(self, timethreshold=1.5):
+        """
+        this is used to find potential calibration - need to run
+        """
+        querysql = f"""SELECT sbid,flagant FROM observation
+WHERE weightsched={self.weight_sched} AND central_freq={self.freq} AND footprint='{self.footprint}'
+AND start_time>={self.start_time-timethreshold} AND start_time<={self.start_time+timethreshold}
+AND calib_rank>=1 AND delete=False AND craco_size>0
+ORDER BY calib_rank DESC, SBID DESC
+"""
+
+        self.cur.execute(querysql)
+        query_result = self.cur.fetchall()
+        log.info(f"{len(query_result)} potential calibration sbid found in the database...")
+
+        for calsbid, calflagant in query_result:
+            flagcheck = check_calib_flagant(calflagant, self.flagant)
+            if flagcheck: return calsbid
+        return None
+
+
+
