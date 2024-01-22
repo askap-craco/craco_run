@@ -8,11 +8,15 @@ logging.basicConfig(level=logging.INFO)
 import os
 import glob
 import numpy as np
+import subprocess
 
 from craco.datadirs import SchedDir, ScanDir
 
 from prepare_skadi import MetaManager
 from metaflag import MetaAntFlagger
+import craco_cfg as cfg
+
+from auto_sched import push_sbid_calibration
 
 def _format_sbid(sbid, padding=True):
     "perform formatting for the sbid"
@@ -78,11 +82,31 @@ class CalibManager:
     def copy_solution(self):
         copycal_path = "/CRACO/SOFTWARE/craco/wan342/Software/craco_run/copycal.py"
         cpcmd = f"{copycal_path} -cal {self.values.calsbid}"
-        os.system(f"tsp {cpcmd}")
+
+        environment = {
+            "TS_SOCKET": "/data/craco/craco/tmpdir/queues/cal",
+            "TS_ONFINISH": f"{cfg.CAL_TS_ONFINISH}",
+            "TMPDIR": "/data/craco/craco/tmpdir",
+        }
+        ecopy = os.environ.copy()
+        ecopy.update(environment)
+
+        subprocess.run(
+            [f"tsp {cpcmd}"], shell=True, capture_output=True,
+            text=True, env=ecopy
+        )
 
     def run(self):
         calscan = self._select_scan()
         self._get_meta()
+
+        ### try to push it to calibration database
+        try:
+            push_sbid_calibration(
+                sbid=self.values.calsbid, prepare=True, plot=False
+            )
+        except Exception as error:
+            log.info(f"failed to push to database... error message - {error}")
 
         ### load startmjd to use for calibration
         shortscan = "/".join(calscan.split("/")[-2:])
@@ -90,12 +114,25 @@ class CalibManager:
         except: startmjd = 0
 
         cmd = f"""mpi_run_beam.sh {calscan} `which mpi_do_calibrate.sh` --start-mjd {startmjd}"""
+        
         # if self.values.dryrun:
         if False:
             log.info(f"please run  - {cmd}")
         else:
             log.info(f"queuing up calibration - {cmd}")
-            os.system(f"tsp {cmd}")     
+            ### use subprocess instead here
+            environment = {
+                "TS_SOCKET": "/data/craco/craco/tmpdir/queues/cal",
+                # "TS_ONFINISH": f"{cfg.CAL_TS_ONFINISH}",
+                "TMPDIR": "/data/craco/craco/tmpdir",
+            }
+            ecopy = os.environ.copy()
+            ecopy.update(environment)
+
+            subprocess.run(
+                [f"tsp {cmd}"], shell=True, capture_output=True,
+                text=True, env=ecopy
+            )
 
         self.copy_solution()   
 
