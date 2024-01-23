@@ -13,9 +13,15 @@ from craco.datadirs import DataDirs, SchedDir, ScanDir, RunDir, CalDir
 from craco import plotbp
 
 from configparser import ConfigParser
+import subprocess
+import time
 import glob
 import re
 import os
+
+from slack_sdk import WebClient
+
+from metaflag import MetaManager
 
 import logging
 log = logging.getLogger(__name__)
@@ -328,55 +334,37 @@ class CracoSchedBlock:
         return d
 
 ### functions to interact with database
-def update_craco_sched_status(conn, craco_sched_info):
-    sbid = craco_sched_info["sbid"]
-    # find whether this sbid exists already
-    cur = conn.cursor()
-    cur.execute(f"SELECT * FROM observation WHERE SBID = {sbid}")
-    res = cur.fetchall()
-    if len(res) == 0: # insert
-        d = craco_sched_info
-        insert_sql = f"""INSERT INTO observation (
-    sbid, alias, corr_mode, start_freq, end_freq, 
-    central_freq, footprint, template, start_time, 
-    duration, flagant, status, calib_rank, craco_record, 
-    craco_size, weight_reset, weightsched
-)
-VALUES (
-    {d["sbid"]}, '{d["alias"]}', '{d["corr_mode"]}', {d["start_freq"]}, {d["end_freq"]},
-    {d["central_freq"]}, '{d["footprint"]}', '{d["template"]}', {d["start_time"]},
-    {d["duration"]}, '{d["flagant"]}', {d["status"]}, {d["calib_rank"]}, {d["craco_record"]}, 
-    {d["craco_size"]}, {d["weight_reset"]}, {d["weight_sched"]}
-);
+
+### update observation table
+def update_table_single_entry(sbid, column, value, table, conn=None, cur=None,):
+    if conn is None:
+        conn = get_psql_connect()
+    if cur is None:
+        cur = conn.cursor()
+
+    if isinstance(value, str):
+        value = f"""'{value}'"""
+    ### update part not if there is nothing if we update nothing
+    updatesql = f"""UPDATE {table}
+SET {column}={value} WHERE sbid={sbid}
 """
-        cur.execute(insert_sql)
-        conn.commit()
-        
-    else: # update
-        d = craco_sched_info
-        update_sql = f"""UPDATE observation 
-SET alias='{d["alias"]}', corr_mode='{d["corr_mode"]}', start_freq={d["start_freq"]},
-end_freq={d["end_freq"]}, central_freq={d["central_freq"]}, footprint='{d["footprint"]}', 
-template='{d["template"]}', start_time={d["start_time"]}, duration={d["duration"]}, 
-flagant='{d["flagant"]}', status={d["status"]}, calib_rank={d["calib_rank"]}, 
-craco_record={d["craco_record"]}, craco_size={d["craco_size"]}, 
-weight_reset={d["weight_reset"]}, weightsched={d["weight_sched"]}
-WHERE sbid={sbid}
-"""
-        cur.execute(update_sql)
-        conn.commit()
+    cur.execute(updatesql)
+    conn.commit()    
 
 ############# FOR CALIBRATION ##################
 
-def push_sbid_calibration(sbid, prepare=True, plot=True, updateobs=False):
+def push_sbid_calibration(
+        sbid, prepare=True, plot=True, updateobs=False,
+        conn = None, cur = None,
+    ):
     """
     add calibration information to the database
     """
     if int(sbid) == 0: return
     log.info(f"loading calibration for {sbid}")
     
-    conn = get_psql_connect()
-    cur = conn.cursor()
+    if conn is None: conn = get_psql_connect()
+    if cur is None: cur = conn.cursor()
     
     calcls = CracoCalSol(sbid)
     solnum = calcls.solnum
@@ -436,12 +424,11 @@ WHERE sbid={sbid}
 """
         cur.execute(update_sql)
         conn.commit()
-        
-    conn.close()
 
 
 ################### THIS IS THE TEST CLASS FOR DEBUGGING ###################
 
+"""
 def get_random_num():
     return np.random.uniform()
 
@@ -460,10 +447,10 @@ class CracoCalSol:
         rand = get_random_num()
         if rand < 0.8: return True, 30, 36
         return False, 28, 35
+"""
 
 ############################################################################
 
-'''
 class CracoCalSol:
     def __init__(
         self, sbid, flagfile="/home/craftop/share/fixed_freq_flags.txt"
@@ -630,11 +617,12 @@ class CalSolBeam:
         if unflagchan is not None:  phdif = phdif[:, unflagchan]
         return phdif
 
-'''
-
 ########### FOR execution ###############
 
-def push_sbid_execution(sbid, runname="results", calsbid=None, reset=False, newstatus=0):
+def push_sbid_execution(
+        sbid, runname="results", calsbid=None, reset=False, newstatus=0,
+        conn=None, cur=None,
+    ):
     scheddir = SchedDir(sbid)
 
     ### get calibration sbid
@@ -658,8 +646,8 @@ def push_sbid_execution(sbid, runname="results", calsbid=None, reset=False, news
             continue
             
     ### start to update database
-    conn = get_psql_connect()
-    cur = conn.cursor()
+    if conn is None: conn = get_psql_connect()
+    if cur is None: cur = conn.cursor()
     cur.execute(f"SELECT sbid, status FROM execution WHERE SBID={sbid} AND RUNNAME='{runname}'")
     
     res = cur.fetchall()
@@ -689,24 +677,6 @@ WHERE sbid={sbid} AND runname='{runname}'
 """
         cur.execute(update_sql)
         conn.commit()
-        
-    conn.close()
-
-### update observation table
-def update_table_single_entry(sbid, column, value, table, conn=None, cur=None,):
-    if conn is None:
-        conn = get_psql_connect()
-    if cur is None:
-        cur = conn.cursor()
-
-    if isinstance(value, str):
-        value = f"""'{value}'"""
-    ### update part not if there is nothing if we update nothing
-    updatesql = f"""UPDATE {table}
-SET {column}={value} WHERE sbid={sbid}
-"""
-    cur.execute(updatesql)
-    conn.commit()
 
 
 #### function to pick up correct calibration
@@ -798,4 +768,307 @@ ORDER BY calib_rank DESC, SBID DESC
         return None
 
 
+######## initial update to the observation database #######
+def _update_craco_sched_status(craco_sched_info, conn=None, cur=None):
+    if conn is None: conn = get_psql_connect()
+    if cur is None: cur = conn.cursor()
 
+    sbid = craco_sched_info["sbid"]
+    # find whether this sbid exists already
+    cur.execute(f"SELECT * FROM observation WHERE SBID = {sbid}")
+    res = cur.fetchall()
+    if len(res) == 0: # insert
+        d = craco_sched_info
+        insert_sql = f"""INSERT INTO observation (
+    sbid, alias, corr_mode, start_freq, end_freq, 
+    central_freq, footprint, template, start_time, 
+    duration, flagant, status, calib_rank, craco_record, 
+    craco_size, weight_reset, weightsched
+)
+VALUES (
+    {d["sbid"]}, '{d["alias"]}', '{d["corr_mode"]}', {d["start_freq"]}, {d["end_freq"]},
+    {d["central_freq"]}, '{d["footprint"]}', '{d["template"]}', {d["start_time"]},
+    {d["duration"]}, '{d["flagant"]}', {d["status"]}, {d["calib_rank"]}, {d["craco_record"]}, 
+    {d["craco_size"]}, {d["weight_reset"]}, {d["weight_sched"]}
+);
+"""
+        cur.execute(insert_sql)
+        conn.commit()
+        
+    else: # update
+        d = craco_sched_info
+        update_sql = f"""UPDATE observation 
+SET alias='{d["alias"]}', corr_mode='{d["corr_mode"]}', start_freq={d["start_freq"]},
+end_freq={d["end_freq"]}, central_freq={d["central_freq"]}, footprint='{d["footprint"]}', 
+template='{d["template"]}', start_time={d["start_time"]}, duration={d["duration"]}, 
+flagant='{d["flagant"]}', status={d["status"]}, calib_rank={d["calib_rank"]}, 
+craco_record={d["craco_record"]}, craco_size={d["craco_size"]}, 
+weight_reset={d["weight_reset"]}, weightsched={d["weight_sched"]}
+WHERE sbid={sbid}
+"""
+        cur.execute(update_sql)
+        conn.commit()
+
+
+def push_sbid_observation(sbid, conn=None, cur=None):
+    log.info(f"updating observation database for {sbid}...")
+    try:
+        cracosched = CracoSchedBlock(sbid)
+        d = cracosched.format_sbid_dict()
+    except Exception as error:
+        log.warning(f"failed to get status for SB{sbid}... use Unknown for this sbid... error - {error}")
+        d = dict(
+            sbid=sbid, alias="Unknown", corr_mode="Unknown",
+            craco_record=False, start_freq=-1, end_freq=-1,
+            central_freq=-1, footprint="Unknown", template="Unknown",
+            start_time=-1, duration=-1, flagant="none",
+            status=-1, calib_rank=-1, craco_size=-1,
+            weight_sched=-1, weight_reset=False
+        )
+
+    try:
+        _update_craco_sched_status(craco_sched_info=d, conn=conn, cur=cur)
+    except Exception as error:
+        log.critical(f"failed to push schedblock status for {sbid}... please check... \n error - {error}")
+
+######### function to update observation #######
+def run_observation_update(latestsbid, defaultsbid=None):
+    """
+    based on the latest sbid, update the observation table
+    this can be used in sbrunner
+    """
+    # get maximum sbid in the database first
+    conn = get_psql_connect()
+    cur = conn.cursor()
+
+    cur.execute("SELECT MAX(sbid) FROM observation")
+    maxsbid = cur.fetchone()[0]
+
+    if maxsbid is None:
+        log.error("no sbid registered in observation database...")
+        if defaultsbid is None:
+            raise ValueError("no sbid found in observation database...")
+        maxsbid = defaultsbid
+        log.info(f"will use {defaultsbid} to as maximum sbid to update database...")
+    log.info(f"previous maximum sbid found in database is - {maxsbid}")
+
+    for sbid in range(maxsbid+1, latestsbid+1):
+        ### run meta data loader here
+        metamanager = MetaManager(sbid)
+        metamanager.run()
+        push_sbid_observation(sbid, conn=conn, cur=cur)
+
+
+### auto scheduling related - how to schedule all different stuff...
+class PipeSched:
+    def __init__(self, sleeptime=60, ):
+        self.sleeptime = sleeptime
+        self.conn = get_psql_connect()
+        self.cur = self.conn.cursor()
+        self.engine = get_psql_engine()
+
+        self.slackbot = SlackPostManager()
+
+    def _query_nonrun_sbid(self):
+        """
+        query sbid need to be queued...
+        """
+        sql = f"""SELECT sbid FROM observation
+WHERE tsp=false AND delete=false AND weight_reset=false
+AND craco_record=true AND status > 3
+ORDER BY sbid ASC
+""" # status need to be double checked!
+        
+        self.cur.execute(sql)
+        res = self.cur.fetchall()
+
+        if len(res) == 0: return []
+        return [i[0] for i in res]
+    
+
+    def _sbid_run(self, sbid, timethreshold=1.5):
+        """
+        run a given sbid - either run prepare_skadi, or run run_calib or wait
+        """
+        calfinder = CalFinder(sbid)
+        calsbid, calstatus = calfinder.query_calib_table(timethreshold=timethreshold)
+        if calsbid is None:
+            log.info(f"cannot find existing sbid for calibration for {sbid}... will create a new one")
+            calsbid = calfinder.query_observe_table(timethreshold=timethreshold)
+            if calsbid is None:
+                log.warning(f"no calibration found for {sbid}... will wait for further observation...")
+                self.slackbot.post_message(
+                    f"*[SCHEDULER]* cannot find calibration solution for {sbid}",
+                    mention_team=False,
+                )
+                return # i.e., do nothing
+            ### now it is time to schedule calibration run...
+            log.info("scheduling calibration...")
+            self._run_calib(calsbid=calsbid)
+            return
+            
+        if calstatus == 1: # calibration is running now
+            log.info(f"calibration for {sbid} - {calsbid} is still running... wait for it to finish...")
+            return
+        log.info(f"running pipeline run for {sbid} with {calsbid}...")
+        self._run_piperun(
+            obssbid=sbid, calsbid=calsbid, nqueues=2
+        )
+
+    def _subprocess_execute(self, cmds, envs, post=False):
+        if isinstance(cmds, str): cmds = [cmds]
+
+        with subprocess.Popen(
+            cmds, stdout=subprocess.PIPE, bufsize=1, universal_newlines=True,
+            env=envs, text=True, shell=True
+        ) as p:
+            for outputline in p.stdout:
+                print(outputline, end="")
+        if p.returncode != 0:
+            log.warning(f"error in running the following command - {cmds}")
+            if post:
+                self.slackbot.post_message(f"*<SHELL>* error in running the following shell script - {cmds}")
+        
+    def _run_calib(self, calsbid, post=True):
+        envs = os.environ.copy()
+        calibcmd = f"./run_calib.py -cal {calsbid}"
+        log.info(f"run the following command for calibration - {calibcmd}")
+        if post:
+            self.slackbot.post_message(
+                f"*[SCHEDULER]* submit calibration process for {calsbid}"
+            )
+        # subprocess.run([calibcmd], shell=True, capture_output=True, text=True, env=envs)
+        self._subprocess_execute(calibcmd, envs=envs, post=True)
+
+    def _run_piperun(self, obssbid, calsbid, nqueues=2, post=True):
+        # TODO - add injection here
+        envs = os.environ.copy()
+        runcmd = f"./prepare_skadi.py -cal {calsbid} -obs {obssbid} --nqueues {nqueues}"
+        log.info(f"running pipeline run for {obssbid} with calibration {calsbid}")
+        if post:
+            self.slackbot.post_message(
+                f"*[SCHEDULER]* submit pipeline run for {obssbid} with calibration {calsbid}"
+            )
+        # subprocess.run([runcmd], shell=True, capture_output=True, text=True, env=envs)
+        self._subprocess_execute(runcmd, envs=envs, post=True)
+
+    def run(self, ):
+        try:
+            while True: #
+                try:
+                    sbid_to_run = self._query_nonrun_sbid()
+                    log.info(f"found {len(sbid_to_run)} schedule blocks to be processed...")
+                    for sbid in sbid_to_run:
+                        self._sbid_run(sbid=sbid)
+                        time.sleep(1.5) # sleep for 1 second so that slack to display everything
+                    time.sleep(self.sleeptime)
+                except Exception as error:
+                    self.slackbot.post_message(
+                        f"*[SCHEDULER]* exception raised - {error}"
+                    )
+                    time.sleep(self.sleeptime)
+        except KeyboardInterrupt:
+            self.slackbot.post_message(
+                "*[SCHEDULER]* automatic scheduler has been disabled"
+            )
+            return 
+
+### slack posting
+class SlackPostManager:
+    def __init__(self, test=True, ):
+        self.__load_webclient(test=test)
+
+    def __load_webclient(self, test):
+        slack_config = load_config(section="slack")
+        self.client = WebClient(slack_config["slacktoken"])
+        if test: self.channel = slack_config["testchannel"]
+        else: self.channel = slack_config["channel"]
+
+        _oplst = load_config(section="slack_notification")
+        oplst = [v for _, v in _oplst.items()] # this is for notification
+
+        ### make a mention block
+        self.mention_msg = ", ".join([f"<@{user}>" for user in oplst])
+        self.mention_block = self._format_text_block(self.mention_msg)
+
+    def post_message(self, msg_blocks, thread_ts=None, mention_team=False):
+        if isinstance(msg_blocks, str):
+            msg_blocks = [self._format_text_block(msg_blocks)]
+        if isinstance(msg_blocks, dict):
+            msg_blocks = [msg_blocks]
+
+        if mention_team: msg_blocks.append(self.mention_block)
+
+        try:
+            if thread_ts is None:
+                postresponse = self.client.chat_postMessage(
+                    channel=self.channel,
+                    blocks=msg_blocks,
+                )
+            else:
+                postresponse = self.client.chat_postMessage(
+                    channel=self.channel,
+                    thread_ts=thread_ts,
+                    blocks=msg_blocks,
+                )
+            return postresponse
+        except Exception as error:
+            log.error(f"failed to post message to {self.channel}... \n error - {error}")
+            return None
+
+    def upload_file(self, files, comment="", thread_ts=None, mention_team=False):
+        if mention_team: comment += f" {self.mention_msg}"
+        try:
+            if thread_ts is None: # thread_ts should be a string!!!
+                postresponse = self.client.files_upload(
+                    channels=self.channel,
+                    initial_comment=comment,
+                    file=files
+                )
+            else:
+                postresponse = self.client.files_upload(
+                    channels=self.channel,
+                    initial_comment=comment,
+                    thread_ts=thread_ts,
+                    file=files
+                )
+        except Exception as error:
+            log.error(f"error uploading file - {error}")
+            return None
+        return postresponse
+    
+    def _format_text_block(self, msg):
+        return {
+            "type": "section",
+            "text": dict(type="mrkdwn", text=msg)
+        }
+    
+    def _format_text_twocols(self, msgs):
+        return {
+            "type": "section",
+            "fields": [
+                dict(type="mrkdwn", text=msg)
+                for msg in msgs
+            ]
+        }
+
+    def get_thread_ts_from_response(self, response):
+        response_dict = response.data
+        if "files" in response_dict:
+            try:
+                thread_files = response_dict["file"]["shares"]["private"][self.channel]
+                if len(thread_files) != 1:
+                    log.warning(f"{len(thread_files)} found for this response... will only choose the first one")
+                return thread_files[0]["ts"]
+            except:
+                log.error(f"cannot load thread_ts from the response... it is in a file format...")
+                return None
+        try: return response_dict["ts"]
+        except:
+            log.info("cannot load thread_ts from the response... it is in a thread format...")
+            return None
+
+
+######## several other functions to use for quick scheduling #######
+def reject_calibration(sbid, reject_run=True):
+    pass
