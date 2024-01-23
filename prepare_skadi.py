@@ -17,7 +17,7 @@ from metaflag import MetaAntFlagger
 import craco_cfg as cfg
 import subprocess
 
-from auto_sched import push_sbid_execution
+from auto_sched import push_sbid_execution, update_table_single_entry
 
 def _format_sbid(sbid, padding=True):
     "perform formatting for the sbid"
@@ -241,7 +241,7 @@ class ExecuteManager:
         return f"{self.obssbid}.{scannum}.{scanstart}.{self.runname}.c{trun}"
 
     ### write everything to a bash file
-    def write_bash_scan(self, scan):
+    def write_bash_scan(self, scan, dryrun=False):
         scanfname = self.format_scanrun_name(scan)
         shfname = f"run.{scanfname}.sh"
 
@@ -311,9 +311,9 @@ logpath=$outdir/{scanfname}.$trun.log
 
 {runcmd} 2>&1 | tee $logpath  
 """
-
-        with open(f"{self.shelldir}/{shfname}", "w") as fp:
-            fp.write(bashf)
+        if dryrun: # dryrun won't write anything to the disk
+            with open(f"{self.shelldir}/{shfname}", "w") as fp:
+                fp.write(bashf)
 
         return f"{self.shelldir}/{shfname}"
 
@@ -323,25 +323,29 @@ logpath=$outdir/{scanfname}.$trun.log
         self._get_obs_info()
 
         self.shellscripts = []
-        self.fixuvfitscmd = []
-        self.summarisecmds = []
+
         nqueues = self.values.nqueues
         environments = []
         commands = []
         for iscan, scan in enumerate(self.allscans):
             iqueue = int(self.values.obssbid) % nqueues
-            shellpath = self.write_bash_scan(scan) # note scan is /data/craco/craco/SB0xxxxx/...
+            shellpath = self.write_bash_scan(scan, dryrun=self.values.dryrun) # note scan is /data/craco/craco/SB0xxxxx/...
+            
+            ### todo - decide which queue to use based on the current queue value
             environments.append({
-                'TS_SOCKET':f'/data/craco/craco/tmpdir/queues/{iqueue}',
+                'TS_SOCKET':f'{cfg.PIPE_RUN_TS_SOCKET}/{iqueue}',
                 'TS_ONFINISH': f"{cfg.PIPE_TS_ONFINISH}",
                 'START_CARD':str(iqueue*2),
                 'RUNNAME':self.runname
             })
-            commands.append(f'./do_search_and_summarise.sh {scan} {shellpath} {self.runname}')
+            
+            searchcmd = f'./do_search_and_summarise.sh {scan} {shellpath} {self.runname}'
+            if self.values.dryrun:
+                commands.append(f"echo `{searchcmd}`; sleep 10")
+            else:
+                commands.append(searchcmd)
             
             self.shellscripts.append(shellpath)
-            self.fixuvfitscmd.append(f"mpi_run_beam.sh {scan} `which mpi_do_fix_uvfits.sh`")
-            self.summarisecmds.append(f"/CRACO/SOFTWARE/craco/craftop/softwares/craco_run/run_summarise.sh {scan}")
 
         log.info("making bash files executable...")
         for i in self.shellscripts:
@@ -358,9 +362,6 @@ logpath=$outdir/{scanfname}.$trun.log
                 ecopy.update(environment)
                 p = subprocess.run([tspcmd], shell=True, capture_output=True, text=True, env=ecopy)
                 tsp_jobid = int(p.stdout.strip())
-            #summarise_tsp_cmd = f"tsp -D {tsp_jobid} {summarisecmd}"
-            #summarise_tsp_cmd = f"tsp {summarisecmd}"
-            #os.system(summarise_tsp_cmd)
 
 def main():
     from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
@@ -386,7 +387,16 @@ def main():
         )
     except Exception as error:
         log.info(f"failed to push new update to database... with the following error message - {error}")
-        
+    
+    log.info("updating observation database...")
+    try:
+        update_table_single_entry(
+            sbid=values.obssbid, column="tsp", value=True,
+            table="observation"
+        )
+    except Exception as error:
+        log.warning(f"failed to update tsp column to True - error: {error}")
+
     execmanager = ExecuteManager(values)
     execmanager.run()
 
