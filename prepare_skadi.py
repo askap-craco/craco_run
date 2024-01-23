@@ -13,7 +13,7 @@ from datetime import datetime
 from craft.cmdline import strrange
 from craco.datadirs import SchedDir, ScanDir
 
-from metaflag import MetaAntFlagger
+from metaflag import MetaAntFlagger, MetaManager
 import craco_cfg as cfg
 import subprocess
 
@@ -132,45 +132,6 @@ class CalLinker:
         self.clean_cal()
         self.link_cal()
 
-class MetaManager:
-    """
-    class to manage all metadata files
-    """
-    def __init__(self, obssbid, frac=0.8):
-        self.obssbid = _format_sbid(obssbid, padding=True)
-        ### get head node folder for this sbid
-        self.workdir = f"/CRACO/DATA_00/craco/{self.obssbid}"
-        self.metaname = f"{_format_sbid(obssbid, padding=False)}.json.gz"
-        self.badfrac = frac # determine the fraction of bad antenna
-
-    ### get meta data and save it to correct place
-    def _get_tethys_metadata(self, overwrite=False):
-        if not overwrite:
-            if os.path.exists(f"{self.workdir}/{self.metaname}"):
-                log.info("metadata exists... stop downloading...")
-                return
-        else:
-            log.warning("overwriting existing metadata...")
-        
-        ### get meta data from tethys
-        scpcmd = f'''scp "tethys:/data/TETHYS_1/craftop/metadata_save/{self.metaname}" {self.workdir}'''
-        log.info(f"downloading metadata {self.metaname} from tethys")
-        os.system(scpcmd)
-
-    def _get_flagger_info(self, ):
-        self.metaantflag = MetaAntFlagger(
-            f"{self.workdir}/{self.metaname}", fraction=self.badfrac,
-        )
-
-        dumpfname = f"{self.workdir}/{self.obssbid}.antflag.json"
-        # self.metaantflag.run(dumpfname)
-        self.metaantflag._run(self.obssbid, dumpfname)
-
-        ### note there are information useful in this self.metaantflag
-
-    def run(self):
-        self._get_tethys_metadata(overwrite=False)
-        self._get_flagger_info()
 
 class ExecuteManager:
     """
