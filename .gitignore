@@ -9,3 +9,4 @@ template.py
 
 *.ini
 *.ipynb
+*test*

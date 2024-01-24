@@ -324,7 +324,7 @@ class CracoSchedBlock:
         
         try: d["calib_rank"] = self.get_sbid_calib_rank()
         except Exception as error: 
-            log.warning(f"cannot get the calibration rank... Error message is as followed: {error}")
+            log.warning(f"cannot get the calibration rank for {self.sbid}... Error message is as followed: {error}")
             d["calib_rank"] = -1
             
         d["craco_size"] = self.craco_sched_uvfits_size
@@ -334,22 +334,6 @@ class CracoSchedBlock:
         return d
 
 ### functions to interact with database
-
-### update observation table
-def update_table_single_entry(sbid, column, value, table, conn=None, cur=None,):
-    if conn is None:
-        conn = get_psql_connect()
-    if cur is None:
-        cur = conn.cursor()
-
-    if isinstance(value, str):
-        value = f"""'{value}'"""
-    ### update part not if there is nothing if we update nothing
-    updatesql = f"""UPDATE {table}
-SET {column}={value} WHERE sbid={sbid}
-"""
-    cur.execute(updatesql)
-    conn.commit()    
 
 ############# FOR CALIBRATION ##################
 
@@ -854,6 +838,7 @@ def run_observation_update(latestsbid, defaultsbid=None):
 
     for sbid in range(maxsbid+1, latestsbid+1):
         ### run meta data loader here
+        log.info(f"updating sbid - {sbid}")
         metamanager = MetaManager(sbid)
         metamanager.run()
         push_sbid_observation(sbid, conn=conn, cur=cur)
@@ -861,13 +846,15 @@ def run_observation_update(latestsbid, defaultsbid=None):
 
 ### auto scheduling related - how to schedule all different stuff...
 class PipeSched:
-    def __init__(self, sleeptime=60, ):
+    def __init__(self, sleeptime=60, dryrun=True, test=False):
         self.sleeptime = sleeptime
         self.conn = get_psql_connect()
         self.cur = self.conn.cursor()
         self.engine = get_psql_engine()
 
-        self.slackbot = SlackPostManager()
+        self.dryrun = dryrun
+
+        self.slackbot = SlackPostManager(test=test)
 
     def _query_nonrun_sbid(self):
         """
@@ -899,7 +886,7 @@ ORDER BY sbid ASC
                 log.warning(f"no calibration found for {sbid}... will wait for further observation...")
                 self.slackbot.post_message(
                     f"*[SCHEDULER]* cannot find calibration solution for {sbid}",
-                    mention_team=False,
+                    mention_team=True,
                 )
                 return # i.e., do nothing
             ### now it is time to schedule calibration run...
@@ -915,8 +902,14 @@ ORDER BY sbid ASC
             obssbid=sbid, calsbid=calsbid, nqueues=2
         )
 
-    def _subprocess_execute(self, cmds, envs, post=False):
+    def _subprocess_execute(self, cmds, envs, post=False,):
         if isinstance(cmds, str): cmds = [cmds]
+
+        if self.dryrun: 
+            log.info(f"dryrun - going to run `{cmds}`")
+            if post:
+                self.slackbot.post_message(f"*<SHELL><DRYRUN>* running {cmds}")
+            return
 
         with subprocess.Popen(
             cmds, stdout=subprocess.PIPE, bufsize=1, universal_newlines=True,
@@ -953,6 +946,9 @@ ORDER BY sbid ASC
         self._subprocess_execute(runcmd, envs=envs, post=True)
 
     def run(self, ):
+        self.slackbot.post_message(
+            "*[SCHEDULER]* automatic scheduler has been enabled"
+        )
         try:
             while True: #
                 try:
@@ -1070,5 +1066,34 @@ class SlackPostManager:
 
 
 ######## several other functions to use for quick scheduling #######
+### update observation table
+def update_table_single_entry(sbid, column, value, table, conn=None, cur=None,):
+    if conn is None:
+        conn = get_psql_connect()
+    if cur is None:
+        cur = conn.cursor()
+
+    if isinstance(value, str):
+        value = f"""'{value}'"""
+    ### update part not if there is nothing if we update nothing
+    updatesql = f"""UPDATE {table}
+SET {column}={value} WHERE sbid={sbid}
+"""
+    cur.execute(updatesql)
+    conn.commit()    
+
+def query_table_single_column(sbid, column, table, conn=None, cur=None):
+    if conn is None:
+        conn = get_psql_connect()
+    if cur is None:
+        cur = conn.cursor()
+
+    sql = f"""SELECT {column} FROM {table} WHERE sbid={sbid}"""
+    cur.execute(sql)
+    res = cur.fetchone()
+
+    if res is None: return None
+    return res[0]
+
 def reject_calibration(sbid, reject_run=True):
     pass

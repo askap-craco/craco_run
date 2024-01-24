@@ -272,7 +272,7 @@ logpath=$outdir/{scanfname}.$trun.log
 
 {runcmd} 2>&1 | tee $logpath  
 """
-        if dryrun: # dryrun won't write anything to the disk
+        if not dryrun: # dryrun won't write anything to the disk
             with open(f"{self.shelldir}/{shfname}", "w") as fp:
                 fp.write(bashf)
 

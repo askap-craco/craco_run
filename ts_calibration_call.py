@@ -1,8 +1,14 @@
 #!/usr/bin/env python
 import sys
 import re
+import os
 
-from auto_sched import push_sbid_calibration
+from craco.datadirs import CalDir
+
+from auto_sched import (
+    push_sbid_calibration, SlackPostManager,
+    query_table_single_column
+)
 
 def find_calib_info(runcmd):
     pat = "copycal\.py -cal (\d*)"
@@ -23,3 +29,15 @@ if __name__ == "__main__":
     )
 
     ### add slack here if possible
+    calib_status = query_table_single_column(sbid, "status", "calibration")
+    calib_valid = query_table_single_column(sbid, "valid", "calibration")
+
+    caldir = CalDir(sbid)
+    qc_fpath = f"{caldir.cal_head_dir}/calsol_qc.png"
+
+    slackbot = SlackPostManager(test=False)
+    slackmsg = f"*[CALIB]* finish calibration for SB{sbid} - valid {calib_valid} with status {calib_status}"
+    if os.path.exists(qc_fpath):
+        slackbot.upload_file(files=qc_fpath, comment=slackmsg)
+    else:
+        slackbot.post_message(slackmsg + "*no quality contral image found*", mention_team=True)
