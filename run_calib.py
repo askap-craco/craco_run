@@ -12,8 +12,8 @@ import subprocess
 
 from craco.datadirs import SchedDir, ScanDir
 
-from prepare_skadi import MetaManager
-from metaflag import MetaAntFlagger
+# from prepare_skadi import MetaManager
+from metaflag import MetaAntFlagger, MetaManager
 import craco_cfg as cfg
 
 from auto_sched import push_sbid_calibration
@@ -84,9 +84,9 @@ class CalibManager:
         cpcmd = f"{copycal_path} -cal {self.values.calsbid}"
 
         environment = {
-            "TS_SOCKET": "/data/craco/craco/tmpdir/queues/cal",
-            "TS_ONFINISH": f"{cfg.CAL_TS_ONFINISH}",
-            "TMPDIR": "/data/craco/craco/tmpdir",
+            "TS_SOCKET": cfg.CAL_RUN_TS_SOCKET,
+            "TS_ONFINISH": cfg.CAL_TS_ONFINISH,
+            "TMPDIR": cfg.TMPDIR,
         }
         ecopy = os.environ.copy()
         ecopy.update(environment)
@@ -116,14 +116,14 @@ class CalibManager:
         cmd = f"""mpi_run_beam.sh {calscan} `which mpi_do_calibrate.sh` --start-mjd {startmjd}"""
         
         # if self.values.dryrun:
-        if False:
+        if self.values.dryrun:
             log.info(f"please run  - {cmd}")
         else:
             log.info(f"queuing up calibration - {cmd}")
             ### use subprocess instead here
             environment = {
                 "TS_SOCKET": "/data/craco/craco/tmpdir/queues/cal",
-                # "TS_ONFINISH": f"{cfg.CAL_TS_ONFINISH}",
+                "TS_ONFINISH": cfg.CAL_TS_ONFINISH,
                 "TMPDIR": "/data/craco/craco/tmpdir",
             }
             ecopy = os.environ.copy()
@@ -143,7 +143,7 @@ def main():
         formatter_class=ArgumentDefaultsHelpFormatter
     )
     parser.add_argument("-cal", "--calsbid", type=str, help="calibration schedule block", )
-    parser.add_argument("-dryrun", type=bool, help="whether to run it or not", default=False)
+    parser.add_argument("-dryrun", '--dryrun', help="whether to run it or not", default=False, action='store_true')
 
     values = parser.parse_args()       
 

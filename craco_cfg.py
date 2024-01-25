@@ -21,5 +21,13 @@ SEARCHPIPE_PATH     =       "`which mpi_do_search_pipeline.sh`"
 
 
 # task spooler related
+TMPDIR              =       "/data/craco/craco/tmpdir"
 PIPE_TS_ONFINISH    =       "/CRACO/SOFTWARE/craco/craftop/softwares/craco_run/ts_piperun_call.py"
 CAL_TS_ONFINISH     =       "/CRACO/SOFTWARE/craco/craftop/softwares/craco_run/ts_calibration_call.py"
+PIPE_RUN_TS_SOCKET  =       "/data/craco/craco/tmpdir/queues"
+CAL_RUN_TS_SOCKET   =       "/data/craco/craco/tmpdir/queues/cal"
+
+####### the following for testing locally only
+# PIPE_TS_ONFINISH    =       "/Users/zwang/Documents/Curtin/craco_run/ts_piperun_call.py"
+# CAL_TS_ONFINISH     =       "/Users/zwang/Documents/Curtin/craco_run/ts_calibration_call.py"
+# PIPE_RUN_TS_SOCKET  =       "/Users/zwang/Documents/Curtin/tmpdir/queues"
