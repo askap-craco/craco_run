@@ -816,7 +816,19 @@ def push_sbid_observation(sbid, conn=None, cur=None):
         log.critical(f"failed to push schedblock status for {sbid}... please check... \n error - {error}")
 
 ######### function to update observation #######
-def run_observation_update(latestsbid, defaultsbid=None):
+def get_db_max_sbid(conn=None, cur=None):
+    if conn is None: conn = get_psql_connect()
+    if cur is None: cur = conn.cursor()
+
+    cur.execute("SELECT MAX(sbid) FROM observation")
+    maxsbid = cur.fetchone()[0]
+
+    return maxsbid
+
+def run_observation_update(
+    latestsbid, defaultsbid=None, waittime=60, 
+    maxtry=3
+):
     """
     based on the latest sbid, update the observation table
     this can be used in sbrunner
@@ -825,8 +837,7 @@ def run_observation_update(latestsbid, defaultsbid=None):
     conn = get_psql_connect()
     cur = conn.cursor()
 
-    cur.execute("SELECT MAX(sbid) FROM observation")
-    maxsbid = cur.fetchone()[0]
+    maxsbid = get_db_max_sbid(conn=conn, cur=cur)
 
     if maxsbid is None:
         log.error("no sbid registered in observation database...")
@@ -839,9 +850,21 @@ def run_observation_update(latestsbid, defaultsbid=None):
     for sbid in range(maxsbid+1, latestsbid+1):
         ### run meta data loader here
         log.info(f"updating sbid - {sbid}")
-        metamanager = MetaManager(sbid)
-        metamanager.run()
-        push_sbid_observation(sbid, conn=conn, cur=cur)
+        for i in range(maxtry):
+            try:
+                metamanager = MetaManager(sbid)
+                metamanager.run()
+                push_sbid_observation(sbid, conn=conn, cur=cur)
+                break
+            except EOFError:
+                log.info(f"copy metadata unsuccessfully... deleting and rerun - tried {i+1}")
+                os.system(f"rm {metamanager.workdir}/{metamanager.metaname}")
+                time.sleep(waittime)
+            except Exception as error:
+                log.info(f"something goes wrong for this metadata... deleting and rerun - tried {i+1}")
+                os.system(f"rm {metamanager.workdir}/{metamanager.metaname}")
+                time.sleep(waittime)
+            log.error(f"cannot load metadata for {sbid}...")
 
 
 ### auto scheduling related - how to schedule all different stuff...
@@ -873,7 +896,7 @@ ORDER BY sbid ASC
         return [i[0] for i in res]
     
 
-    def _sbid_run(self, sbid, timethreshold=1.5):
+    def _sbid_run(self, sbid, timethreshold=1.5, post=False):
         """
         run a given sbid - either run prepare_skadi, or run run_calib or wait
         """
@@ -884,10 +907,11 @@ ORDER BY sbid ASC
             calsbid = calfinder.query_observe_table(timethreshold=timethreshold)
             if calsbid is None:
                 log.warning(f"no calibration found for {sbid}... will wait for further observation...")
-                self.slackbot.post_message(
-                    f"*[SCHEDULER]* cannot find calibration solution for {sbid}",
-                    mention_team=True,
-                )
+                if post:
+                    self.slackbot.post_message(
+                        f"*[SCHEDULER]* cannot find calibration solution for {sbid}",
+                        mention_team=True,
+                    )
                 return # i.e., do nothing
             ### now it is time to schedule calibration run...
             log.info("scheduling calibration...")
@@ -921,6 +945,7 @@ ORDER BY sbid ASC
             log.warning(f"error in running the following command - {cmds}")
             if post:
                 self.slackbot.post_message(f"*<SHELL>* error in running the following shell script - {cmds}")
+        return p.returncode
         
     def _run_calib(self, calsbid, post=True):
         envs = os.environ.copy()
@@ -931,7 +956,9 @@ ORDER BY sbid ASC
                 f"*[SCHEDULER]* submit calibration process for {calsbid}"
             )
         # subprocess.run([calibcmd], shell=True, capture_output=True, text=True, env=envs)
-        self._subprocess_execute(calibcmd, envs=envs, post=True)
+        p = self._subprocess_execute(calibcmd, envs=envs, post=True)
+        if p != 0: # calibration goes wrong
+            update_table_single_entry(int(calsbid), "calib_rank", -3, "observation")
 
     def _run_piperun(self, obssbid, calsbid, nqueues=2, post=True):
         # TODO - add injection here
@@ -1097,3 +1124,63 @@ def query_table_single_column(sbid, column, table, conn=None, cur=None):
 
 def reject_calibration(sbid, reject_run=True):
     pass
+
+
+### for loading service ###
+import Ice
+import os
+
+
+def _get_ice_comm():
+    host = 'icehost-mro.atnf.csiro.au'
+    port = 4061
+    timeout_ms = 5000
+    default_loc = "IceGrid/Locator:tcp -h " + host + " -p " + str(port) + " -t " + str(timeout_ms)
+
+    init = Ice.InitializationData()
+    init.properties = Ice.createProperties()
+    if "ICE_CONFIG" not in os.environ:
+        loc = default_loc
+    else:
+        ice_cfg_file = os.environ['ICE_CONFIG']
+        ice_parset = ParameterSet(ice_cfg_file)
+        loc = ice_parset.get_value('Ice.Default.Locator', default_loc)
+
+    init.properties.setProperty('Ice.Default.Locator', loc)
+    return Ice.initialize(init)
+    
+def _get_ice_service(comm=None):
+    if comm is None: comm = _get_ice_comm()
+    return SB.ISchedulingBlockServicePrx.checkedCast(
+       comm.stringToProxy("SchedulingBlockService@DataServiceAdapter")
+    )
+
+def _get_meta_max_sbid():
+    metafolder = "/CRACO/DATA_00/craco/metadata"
+    recentmeta = sorted(glob.glob(f"{metafolder}/SB*.json.gz"))[-1]
+    log.debug(f"extract latest sbid based on metadata... {recentmeta}")
+    metafname = recentmeta.split("/")[-1]
+    try:
+        return int(metafname[2:7])
+    except Exception as error:
+        log.warning(f"cannot get sbid from latest metafile - {metafname}")
+        log.warning(f"error message - {error}")
+        return None
+
+def sbid_observation_finish(sbid, service=None):
+    if service is None: service = _get_ice_service()
+    state = service.getState(sbid).value
+    log.debug(f"observation state for {sbid} is {state}")
+    if state <= 3: return False
+    return True
+
+def get_recent_finish_sbid(service=None):
+    maxsbid = _get_meta_max_sbid()
+    if maxsbid is None: return None
+    try:
+        while not sbid_observation_finish(maxsbid, service=service):
+            maxsbid -= 1
+        return maxsbid
+    except Exception as error:
+        log.error(f"cannot load maxsbid - error message {error}")
+        return None

@@ -68,15 +68,16 @@ class MetaManager:
     def _get_tethys_metadata(self, overwrite=False):
         if not overwrite:
             if os.path.exists(f"{self.workdir}/{self.metaname}"):
-                log.info("metadata exists... stop downloading...")
+                log.info("metadata exists... stop copying...")
                 return
         else:
             log.warning("overwriting existing metadata...")
         
         ### get meta data from tethys
         # TODO - get meta from skadi directly
-        scpcmd = f'''scp "tethys:/data/TETHYS_1/craftop/metadata_save/{self.metaname}" {self.workdir}'''
-        log.info(f"downloading metadata {self.metaname} from tethys")
+        scpcmd = f"""cp /CRACO/DATA_00/craco/metadata/{self.metaname} {self.workdir}"""
+        # scpcmd = f'''scp "tethys:/data/TETHYS_1/craftop/metadata_save/{self.metaname}" {self.workdir}'''
+        log.info(f"copying metadata {self.metaname} from head node")
         os.system(scpcmd)
 
     def _get_flagger_info(self, ):

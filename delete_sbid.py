@@ -5,14 +5,16 @@ import logging
 from craft.cmdline import strrange
 import shutil
 
+from auto_sched import update_table_single_entry
+
 logging.basicConfig(filename="/CRACO/SOFTWARE/craco/craftop/logs/delete_sbid.log",
                         level=logging.INFO,
                         format='%(asctime)s %(levelname)s - %(message)s',
                         datefmt='%Y-%m-%d-%H:%M:%S',
                         )
-printer = logging.StreamHandler()
+# printer = logging.StreamHandler()
 
-logging.getLogger('').addHandler(printer)
+# logging.getLogger('').addHandler(printer)
 log = logging.getLogger(__name__)
 
 def parse_sbid(sbid):
@@ -48,6 +50,8 @@ def main(args):
         log.info(f'{sbid} contains KEEP file. ignoring')
         return
     
+    update_table_single_entry(int(args.sbid), "delete", True, "observation")
+
     root_paths = glob.glob(root_regex)
     if len(root_paths) == 0:
         log.info(f"No directories exist on any of the SKADI nodes for the requested SBID - {sbid}")

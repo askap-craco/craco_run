@@ -146,8 +146,8 @@ class RunMonitor(CracoSlack):
 def main():
     r = RunMonitor(channel=prochannel)
     while True:
-        r.post_queue(nqueue=2, threshold=4)
-        r.post_freedisk(threshold=95)
+        r.post_queue(nqueue=2, threshold=-1) # no warning posted atm
+        r.post_freedisk(threshold=110)
         time.sleep(3600) # sleep for one hour
 
 if __name__ == "__main__":
