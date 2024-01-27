@@ -65,7 +65,7 @@ class MetaManager:
         self.badfrac = frac # determine the fraction of bad antenna
 
     ### get meta data and save it to correct place
-    def _get_tethys_metadata(self, overwrite=False):
+    def _get_skadi_metadata(self, overwrite=False):
         if not overwrite:
             if os.path.exists(f"{self.workdir}/{self.metaname}"):
                 log.info("metadata exists... stop copying...")
@@ -80,6 +80,18 @@ class MetaManager:
         log.info(f"copying metadata {self.metaname} from head node")
         os.system(scpcmd)
 
+    def _get_tethys_metadata(self, overwrite=False):
+        if not overwrite:
+            if os.path.exists(f"{self.workdir}/{self.metaname}"):
+                log.info("metadata exists... stop copying...")
+                return
+        else:
+            log.warning("overwriting existing metadata...")
+        
+        scpcmd = f'''scp "tethys:/data/TETHYS_1/craftop/metadata_save/{self.metaname}" {self.workdir}'''
+        log.info(f"copying metadata {self.metaname} from tethys")
+        os.system(scpcmd)
+
     def _get_flagger_info(self, ):
         self.metaantflag = MetaAntFlagger(
             f"{self.workdir}/{self.metaname}", fraction=self.badfrac,
@@ -91,8 +103,11 @@ class MetaManager:
 
         ### note there are information useful in this self.metaantflag
 
-    def run(self):
-        self._get_tethys_metadata(overwrite=False)
+    def run(self, skadi=True):
+        if skadi: 
+            self._get_skadi_metadata(overwrite=False)
+        else:
+            self._get_tethys_metadata(overwrite=False)
         self._get_flagger_info()
 
 class MetaAntFlagger:

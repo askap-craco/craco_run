@@ -288,8 +288,12 @@ logpath=$outdir/{scanfname}.$trun.log
         nqueues = self.values.nqueues
         environments = []
         commands = []
+        nscans = len(self.allscans)
         for iscan, scan in enumerate(self.allscans):
-            iqueue = int(self.values.obssbid) % nqueues
+            if nscans > 1: 
+                iqueue = iscan % nqueues
+            else:
+                iqueue = int(self.values.obssbid) % nqueues
             shellpath = self.write_bash_scan(scan, dryrun=self.values.dryrun) # note scan is /data/craco/craco/SB0xxxxx/...
             
             ### todo - decide which queue to use based on the current queue value

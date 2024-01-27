@@ -850,11 +850,13 @@ def run_observation_update(
     for sbid in range(maxsbid+1, latestsbid+1):
         ### run meta data loader here
         log.info(f"updating sbid - {sbid}")
+        success = False
         for i in range(maxtry):
             try:
                 metamanager = MetaManager(sbid)
-                metamanager.run()
+                metamanager.run(skadi=False)
                 push_sbid_observation(sbid, conn=conn, cur=cur)
+                success = True
                 break
             except EOFError:
                 log.info(f"copy metadata unsuccessfully... deleting and rerun - tried {i+1}")
@@ -864,7 +866,14 @@ def run_observation_update(
                 log.info(f"something goes wrong for this metadata... deleting and rerun - tried {i+1}")
                 os.system(f"rm {metamanager.workdir}/{metamanager.metaname}")
                 time.sleep(waittime)
-            log.error(f"cannot load metadata for {sbid}...")
+        if not success:
+            log.error(f"cannot load metadata from tethys for {sbid}... use skadi one instead...")
+            try:
+                metamanager = MetaManager(sbid)
+                metamanager.run(skadi=True)
+            except Exception as error:
+                log.info("cannot load metadata from skadi... push the database anyway...")
+            push_sbid_observation(sbid, conn=conn, cur=cur)
 
 
 ### auto scheduling related - how to schedule all different stuff...
