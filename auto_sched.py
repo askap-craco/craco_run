@@ -1,5 +1,6 @@
 # module and functions for automatically scheduling
 from aces.askapdata.schedblock import SB, SchedulingBlock
+from askap.parset import ParameterSet
 
 from astropy.coordinates import AltAz, EarthLocation, SkyCoord
 from astropy.time import Time
@@ -981,7 +982,7 @@ ORDER BY sbid ASC
         # subprocess.run([runcmd], shell=True, capture_output=True, text=True, env=envs)
         self._subprocess_execute(runcmd, envs=envs, post=True)
 
-    def run(self, ):
+    def run(self, timethreshold=1.):
         self.slackbot.post_message(
             "*[SCHEDULER]* automatic scheduler has been enabled"
         )
@@ -991,7 +992,7 @@ ORDER BY sbid ASC
                     sbid_to_run = self._query_nonrun_sbid()
                     log.info(f"found {len(sbid_to_run)} schedule blocks to be processed...")
                     for sbid in sbid_to_run:
-                        self._sbid_run(sbid=sbid)
+                        self._sbid_run(sbid=sbid, timethreshold=timethreshold)
                         time.sleep(1.5) # sleep for 1 second so that slack to display everything
                     time.sleep(self.sleeptime)
                 except Exception as error:
