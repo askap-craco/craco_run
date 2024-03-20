@@ -16,10 +16,12 @@ import os
 testchannel = "C06C6D3V03S"
 obschannel = "C060VEYBSBW"
 prochannel = "C05Q11P9GRH"
+opchannel = "C06FCTQ6078"
 mentionlst = [
     "<@U049R2ZMKAN>", "<@U4P2MNJTY>", "<@U012FPE7D2B>",
     "<@U01MHB4ABEU>", "<@U4MN5BE9X>",
 ]
+# mentionlst = ["<@U049R2ZMKAN>"]
 
 class CracoSlack:
 
@@ -88,6 +90,27 @@ class RunMonitor(CracoSlack):
         super().__init__(channel)
 
     # get diskspace
+    def post_tethys_freedisk(self, threshold=80):
+        p = subprocess.run(
+            ["""ssh tethys -f "df -h" """], 
+            shell=True, capture_output=True, text=True
+        )
+        freeline = re.findall("(/dev/sdb1.+/data/TETHYS_1)\n", p.stdout)
+        if len(freeline) == 0: return
+
+        freeline = freeline[0]
+
+        dfout = self.format_code(freeline)
+        r = self.send_message([dfout])
+
+        try:
+            used = float(re.findall("\s+(\d+)\%\s+", freeline)[0])
+        except:
+            return 
+        if used > threshold:
+            alert = "{} - Urgent! please delete some data off of the tethys disks".format(", ".join(mentionlst))
+            self.reply_message(alert, thread_ts=r.data["ts"])
+
     def post_freedisk(self, threshold=95):
         _ = subprocess.run(
             ["ls /CRACO/DATA_{:0>2}".format(i) for i in range(19)], 
@@ -144,10 +167,11 @@ class RunMonitor(CracoSlack):
         self.send_message(msg)
 
 def main():
-    r = RunMonitor(channel=prochannel)
+    r = RunMonitor(channel=opchannel)
     while True:
         r.post_queue(nqueue=2, threshold=-1) # no warning posted atm
         r.post_freedisk(threshold=110)
+        r.post_tethys_freedisk(threshold=90)
         time.sleep(3600) # sleep for one hour
 
 if __name__ == "__main__":

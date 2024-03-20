@@ -21,7 +21,7 @@ def parse_sbid(sbid):
     if sbid.startswith("SB"):
         assert len(sbid) == 8, f"Malformed SBID - {sbid}"
         return sbid
-    elif sbid.startswith("5"):
+    elif sbid.startswith("4") or sbid.startswith("5") or sbid.startswith("6") or sbid.startswith("7") or sbid.startswith("8") or sbid.startswith("9"):
         assert len(sbid) == 5, f"Malformed SBID - {sbid}"
         return "SB0" + sbid
     elif sbid.startswith("0"):

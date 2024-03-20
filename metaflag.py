@@ -57,7 +57,7 @@ class MetaManager:
     """
     class to manage all metadata files
     """
-    def __init__(self, obssbid, frac=0.8):
+    def __init__(self, obssbid, frac=0.2):
         self.obssbid = _format_sbid(obssbid, padding=True)
         ### get head node folder for this sbid
         self.workdir = f"/CRACO/DATA_00/craco/{self.obssbid}"
@@ -112,7 +112,7 @@ class MetaManager:
 
 class MetaAntFlagger:
     
-    def __init__(self, metafile, sbid=None, fraction=0.8):
+    def __init__(self, metafile, sbid=None, fraction=0.2):
         log.info(f"loading metadata file from {metafile}")
         self.meta = MetadataFile(metafile)
         self.antflags = self.meta.antflags
@@ -134,16 +134,18 @@ class MetaAntFlagger:
         self.nt = nt
         self.na = na
     
-    def _find_bad_ant(self, fraction=0.8):
+    def _find_bad_ant(self, fraction=0.2):
         """
         the antenna will be flagged if 80% of the time, it is bad
         """
         flagantsum = self.antflags.sum(axis=0)
-        return np.where(flagantsum >= self.nt * fraction)[0]
+        # work out threshold automatically
+        flagmed = np.median(flagantsum)
+        return np.where(flagantsum >= flagmed + fraction * self.nt)[0]
     
     def _find_good_ranges(self):
         flagtimesum = self.antflags.sum(axis=1) - len(self.badants)
-        good_bool = flagtimesum == 0
+        good_bool = flagtimesum <= 0
         self.good_bool = good_bool
         self.good_ranges = find_true_range(good_bool)
 

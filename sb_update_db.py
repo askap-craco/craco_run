@@ -10,6 +10,10 @@ from auto_sched import (
     run_observation_update, SlackPostManager
 )
 
+import logging
+log = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
 def run():
     slackbot = SlackPostManager(test=False)
     
