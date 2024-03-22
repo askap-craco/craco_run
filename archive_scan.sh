@@ -4,6 +4,7 @@ sbid=$1
 scan=$2
 beam=$3
 node=$4
+comment=$5
 # dry_run="--dry-run"
 dry_run=
 
@@ -18,6 +19,7 @@ acacia_dir="acacia:archive1/SB${sbid_format}"
 
 echo "making file under scan to mark the beginning of the archive"
 touch $head_dir/scans/$scan/ARCHIVE_START
+echo $comment >> $head_dir/scans/$scan/ARCHIVE_START
 
 echo "remove write access for uvfits file..."
 # ls $data_dir/scans/$scan/b${beam_format}.uvfits*
@@ -34,6 +36,7 @@ rclone copy $head_dir $acacia_dir --include "scans/$scan/*.log" --include "scans
 
 echo "making file under scan to mark the beginning of the archive"
 touch $head_dir/scans/$scan/ARCHIVE_END
+echo $comment >> $head_dir/scans/$scan/ARCHIVE_END
 
 
 
