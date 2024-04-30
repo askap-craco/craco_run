@@ -1,6 +1,9 @@
 # module and functions for automatically scheduling
-from aces.askapdata.schedblock import SB, SchedulingBlock
-from askap.parset import ParameterSet
+try:
+    from aces.askapdata.schedblock import SB, SchedulingBlock
+    from askap.parset import ParameterSet
+except:
+    print("cannot load aces package...")
 
 from astropy.coordinates import AltAz, EarthLocation, SkyCoord
 from astropy.time import Time
@@ -19,6 +22,7 @@ import time
 import glob
 import re
 import os
+import pdb
 
 from slack_sdk import WebClient
 
@@ -524,7 +528,9 @@ class CracoCalSol:
                 ax = fig.add_subplot(6, 6, i+1)
                 ax.set_title(f"beam{i:0>2}")
                 try: index = np.where(beams==i)[0][0]
-                except: log.info(f"no solution loaded from beam{i}... will not plot it")
+                except: 
+                    log.info(f"no solution loaded from beam{i}... will not plot it")
+                    continue
                 ax.imshow(
                     sbid_phase_diff[index], vmin=0, vmax=90, 
                     aspect="auto", interpolation="none"
@@ -541,6 +547,11 @@ class CracoCalSol:
         good_beam_count = (sbid_good_frac.mean(axis=1) > bad_frac_threshold).sum()
         good_ant_count = (sbid_good_frac.mean(axis=0) > bad_frac_threshold).sum()
         valid_calsol = np.all(sbid_good_frac > good_frac_threshold)
+
+        ### if there is one beam missing, valid should be false
+        if nbeam < 36:
+            log.warning(f"only {nbeam} calibration solution found... - {beams}")
+            valid_calsol = False
 
         return valid_calsol, good_ant_count, good_beam_count
         
@@ -911,8 +922,10 @@ ORDER BY sbid ASC
         run a given sbid - either run prepare_skadi, or run run_calib or wait
         """
         calfinder = CalFinder(sbid)
+        #pdb.set_trace()
         calsbid, calstatus = calfinder.query_calib_table(timethreshold=timethreshold)
         if calsbid is None:
+            #pdb.set_trace()
             log.info(f"cannot find existing sbid for calibration for {sbid}... will create a new one")
             calsbid = calfinder.query_observe_table(timethreshold=timethreshold)
             if calsbid is None:
@@ -1137,7 +1150,10 @@ def reject_calibration(sbid, reject_run=True):
 
 
 ### for loading service ###
-import Ice
+try:
+    import Ice
+except:
+    print("cannot load Ice package...")
 import os
 
 
