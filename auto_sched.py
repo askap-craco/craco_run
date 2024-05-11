@@ -95,9 +95,9 @@ class CracoSchedBlock:
         for scan in self.craco_scans:
             try:
                 scandir = ScanDir(sbid=self.sbid, scan=scan)
-            except NotImplementedError:
+                uvfits_exists = scandir.uvfits_paths_exists
+            except:
                 continue # no rank file found... aborted
-            uvfits_exists = scandir.uvfits_paths_exists
             if len(uvfits_exists) == 0: continue
             size += os.path.getsize(uvfits_exists[0]) / 1024 / 1024 / 1024
         return size

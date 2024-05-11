@@ -49,8 +49,13 @@ class CalibManager:
         based on the scan, check whether there are 36 uvfits file...
         """
         scan = "/".join(scan.split("/")[-2:])
-        scandir = ScanDir(sbid=self.calsbid, scan=scan)
-        uvfits_exists = scandir.uvfits_paths_exists
+        try:
+            scandir = ScanDir(sbid=self.calsbid, scan=scan)
+            uvfits_exists = scandir.uvfits_paths_exists
+        except NotImplementedError:
+            log.warning(f"no rank file for this scan - {scan}...")
+            return False
+
         if len(uvfits_exists) < 36: 
             log.warning(f"there are less than 36 uvfits file in {scan}")
             return False # need all beams exists

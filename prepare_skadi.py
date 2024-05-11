@@ -186,8 +186,12 @@ class ExecuteManager:
         self.startmjds = self.metamanage.metaantflag.startmjds # it is a dictionary
 
     def __get_scan_nchan(self, scan):
-        scandir = ScanDir(sbid=self.obssbid, scan=scan)
-        uvfitspath = scandir.uvfits_paths[0]
+        try:
+            scandir = ScanDir(sbid=self.obssbid, scan=scan)
+            uvfitspath = scandir.uvfits_paths[0]
+        except NotImplementedError:
+            log.warning(f"no rank file found for scan {scan}... use 288 instead...")
+            return 288
         try:
             nchan = get_nchan_from_uvfits_header(uvfitspath)
             return nchan
