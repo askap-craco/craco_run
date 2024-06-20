@@ -22,6 +22,7 @@ def _main():
     from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
     parser = ArgumentParser(description='Script description', formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('-v', '--verbose', action='store_true', help='Be verbose')
+    parser.add_argument('--only_scan', type=str, help='Only keep this scan (tstart)', default=None)
     parser.add_argument(dest='files', nargs='*', type=int)
     parser.set_defaults(verbose=False)
     values = parser.parse_args()
@@ -60,7 +61,15 @@ def keep_sbid(sbid, name, values):
         
     #hostfile=os.path.join(sched.sched_head_dir
     hostfile = os.environ['HOSTFILE']
-    local_scan_file = f'/data/craco/craco/SB{sbid:06d}'
+    if values.only_scan:
+        list_of_tstarts = [i.split("/")[-1] for i in sched.scans]
+        assert values.only_scan in list_of_tstarts, f"The requested scan {values.only_scan} not found in SBID. The list of scans - {sched.scans}"
+        print(f'Only making scan - {values.only_scan} readonly')
+        local_scan_file = f'/data/craco/craco/SB{sbid:06d}/scans/??/{values.only_scan}'
+
+    else:   
+        local_scan_file = f'/data/craco/craco/SB{sbid:06d}'
+
     cmd = f'mpirun -hostfile {hostfile} -map-by ppr:1:node find {local_scan_file} -type f -exec chmod a-w {{}} \; '
     print('Making uvfits files read only with ', cmd)
     retcode = subprocess.call(cmd, shell=True)
