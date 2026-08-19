@@ -26,7 +26,7 @@ def get_all_scans(sbid):
     scanpattern = f"/data/craco/craco/{sbid}/scans/??/??????????????"
     scans = sorted(glob.glob(scanpattern))
     #allscans = [scan for scan in scans if filter_scan(scan)]
-    return allscans
+    return scans
 
 def filter_scan(sbid, scan):
     """
@@ -50,10 +50,9 @@ def run(args):
     allscans = get_all_scans(sbid)
     for scan in allscans:
         log.info("Averaging uvfits files in scan - {scan}")
-        cmd = f"""mpi_run_beam.sh {scan} `which mpi_run_uvfits_average.sh` --tx {args.tx}"""
+        cmd = f"""mpi_run_beam.sh {scan} `which mpi_run_uvfits_average.sh` -tx {args.tx}"""
         
-        # if self.values.dryrun:
-        if self.values.dryrun:
+        if args.dryrun:
             log.info(f"please run  - {cmd}")
         else:
             log.info(f"Running cmd - {cmd}")

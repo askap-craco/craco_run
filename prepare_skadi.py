@@ -140,7 +140,7 @@ class ExecuteManager:
     ### can we include calibration here as well?
     def __init__(self, values):
         self.callinker = CalLinker(values.obssbid, values.calsbid)
-        self.metamanage = MetaManager(values.obssbid)
+        # self.metamanage = MetaManager(values.obssbid)
         self.obssbid = _format_sbid(values.obssbid, padding=True)
         self.runname = values.runname
 
@@ -173,8 +173,9 @@ class ExecuteManager:
 
     def __get_flag_ant(self, ):
         # get flagant from metadata
-        metaflag = self.metamanage.metaantflag.badants # list
-        flagant = [ia for ia in metaflag if ia <= 30]
+        # metaflag = self.metamanage.metaantflag.badants # list
+        # flagant = [ia for ia in metaflag if ia <= 30]
+        flagant = []
 
         cfgflag = strrange(cfg.FLAGANT) #list as well
         flagant.extend(cfgflag)
@@ -183,7 +184,8 @@ class ExecuteManager:
 
     def __get_start_mjd(self, ):
         # self.startmjd = self.metamanage.metaantflag.trange[0]
-        self.startmjds = self.metamanage.metaantflag.startmjds # it is a dictionary
+        # self.startmjds = self.metamanage.metaantflag.startmjds # it is a dictionary
+        self.startmjds = 0
 
     def __get_scan_nchan(self, scan):
         try:
@@ -227,7 +229,7 @@ runname={self.runname}
 
 outdir=$indir/$runname
 """
-        runcmd = f"""mpi_run_beam.sh $indir $cmd -psf --update-uv-blocks $uvupdate --calibration $caldir --outdir $outdir --metadata $meta --xclbin $XCLBIN --ndm $ndm --phase-center-filterbank $phase_center_filterbank --start-mjd $startmjd """
+        runcmd = f"""mpi_run_beam.sh $indir $cmd -psf --update-uv-blocks $uvupdate --calibration $caldir --outdir $outdir --xclbin $XCLBIN --ndm $ndm --phase-center-filterbank $phase_center_filterbank --start-mjd $startmjd """
 
         if self.flagant:
             bashf += f"""flagant={self.flagant}\n"""
@@ -254,7 +256,9 @@ dflag_cas_threshold={cfg.DFLAG_THRESH}
 dflag_tblk={cfg.DFLAG_TBLK}
 freq_flag_file={cfg.FREQ_FLAG_FILE}
 """
-            runcmd += f"""--dflag-fradius $dflag_fradius --dflag-cas-threshold $dflag_cas_threshold --dflag-tblk $dflag_tblk --flag-frequency-file $freq_flag_file """
+            runcmd += f"""--dflag-fradius $dflag_fradius --dflag-cas-threshold $dflag_cas_threshold --dflag-tblk $dflag_tblk """
+            if not self.values.nofixedflags:
+                runcmd += "--flag-frequency-file $freq_flag_file "
 
             if self.values.injection:
                 assert os.path.exists(self.values.injection), f"Injection file - {self.values.injection} does not exist"
@@ -276,7 +280,8 @@ logpath=$outdir/{scanfname}.$trun.log
 
 {runcmd} 2>&1 | tee $logpath  
 """
-        if not dryrun: # dryrun won't write anything to the disk
+        # if not dryrun: # dryrun won't write anything to the disk
+        if True:
             with open(f"{self.shelldir}/{shfname}", "w") as fp:
                 fp.write(bashf)
 
@@ -284,7 +289,7 @@ logpath=$outdir/{scanfname}.$trun.log
 
     def run(self, ):
         self.callinker.run()
-        self.metamanage.run()
+        # self.metamanage.run()
         self._get_obs_info()
 
         self.shellscripts = []
@@ -295,16 +300,18 @@ logpath=$outdir/{scanfname}.$trun.log
         nscans = len(self.allscans)
         for iscan, scan in enumerate(self.allscans):
             if nscans > 1: 
-                iqueue = iscan % nqueues
+                iqueue = (iscan )  % nqueues
             else:
                 iqueue = int(self.values.obssbid) % nqueues
             shellpath = self.write_bash_scan(scan, dryrun=self.values.dryrun) # note scan is /data/craco/craco/SB0xxxxx/...
+
+            iqueue  = ( iqueue + 1) % nqueues # start on odd queue
             
             ### todo - decide which queue to use based on the current queue value
             environments.append({
                 'TS_SOCKET':f'{cfg.PIPE_RUN_TS_SOCKET}/{iqueue}',
                 'TS_ONFINISH': f"{cfg.PIPE_TS_ONFINISH}",
-                'START_CARD':str(iqueue*2),
+                'START_CARD':str(1-iqueue),
                 'RUNNAME':self.runname
             })
             
@@ -338,15 +345,17 @@ def main():
         description="write pipeline run bash scripts...", 
         formatter_class=ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("-obs", "--obssbid", type=int, help="observation schedule block", )
-    parser.add_argument("-cal", "--calsbid", type=int, help="calibration schedule block", )
+    parser.add_argument("-obs", "--obssbid", type=int, help="observation schedule block", required=True)
+    parser.add_argument("-cal", "--calsbid", type=int, help="calibration schedule block", required=True)
     parser.add_argument("-run", "--runname", type=str, help="runname for the pipeline run", default="results")
     parser.add_argument("-inj", "--injection", type=str, help="injection file to be used", default=None)
     parser.add_argument("-add", "--addition", type=str, help="additional argument passed to search_pipeline", default=None)
-    parser.add_argument("-dryrun", '--dryrun', help="whether to run it or not", default=False, action='store_true')
+    parser.add_argument("-dryrun", '--dryrun', help="whether to run it or not", default=False, action='store_true') 
+    parser.add_argument("-noff", '--nofixedflags', help="whether to flag frequency channel birdies from a file", default=False, action='store_true')
     parser.add_argument('--nqueues', help='Number of queues to send jobs to', default=1, type=int)
 
     values = parser.parse_args()
+    print(values)
 
     log.info("updating execution database...")
     try: 

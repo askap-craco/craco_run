@@ -43,28 +43,25 @@ def _main():
         
 def keep_sbid(sbid, name, values):
     sched = SchedDir(sbid)
-    # nscans = len(sched.scans)
-    # sizes = sched.get_size()
-    # total_size = sum(sizes.values())
+    nscans = len(sched.scans)
+    sizes = sched.get_size()
+    total_size = sum(sizes.values())
 
-    # print(f'SBID {sbid} contains {nscans} scan(s) and total size {total_size}')
+    print(f'SBID {sbid} contains {nscans} scan(s) and total size {total_size}')
 
-    msg = input('Please type the reason why you want to unkeep  this SBID: ')
+    msg = input('Please type the reason why you want to keep  this SBID: ')
     if len(msg) == '':
         print('No message - quitting without keeping this scan')
         return 0
 
-    unkeepfile = os.path.join(sched.sched_head_dir, 'UNKEEP')
     keepfile = os.path.join(sched.sched_head_dir, 'KEEP')
-    with open(unkeepfile, 'w') as f:
+    with open(keepfile, 'w') as f:
         f.write('talkto:' +  name + '\n' + msg + '\n')
-
-    os.remove(keepfile)
         
     #hostfile=os.path.join(sched.sched_head_dir
     hostfile = os.environ['HOSTFILE']
     local_scan_file = f'/data/craco/craco/SB{sbid:06d}'
-    cmd = f'mpirun -hostfile {hostfile} -map-by ppr:1:node find {local_scan_file} -type f -exec chmod u+w {{}} \; '
+    cmd = f'mpirun -hostfile {hostfile} -map-by ppr:1:node find {local_scan_file} -type f -exec chmod a-w {{}} \; '
     print('Making uvfits files read only with ', cmd)
     retcode = subprocess.call(cmd, shell=True)
     print('Setting uvfits as read only was successful')

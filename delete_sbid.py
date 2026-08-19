@@ -3,18 +3,16 @@ import glob
 import argparse
 import logging
 from craft.cmdline import strrange
-import shutil
-
-from auto_sched import update_table_single_entry
+#from auto_sched import update_table_single_entry
 
 logging.basicConfig(filename="/CRACO/SOFTWARE/craco/craftop/logs/delete_sbid.log",
-                        level=logging.INFO,
+                        level=logging.DEBUG,
                         format='%(asctime)s %(levelname)s - %(message)s',
                         datefmt='%Y-%m-%d-%H:%M:%S',
                         )
-# printer = logging.StreamHandler()
+printer = logging.StreamHandler()
 
-# logging.getLogger('').addHandler(printer)
+logging.getLogger('').addHandler(printer)
 log = logging.getLogger(__name__)
 
 def parse_sbid(sbid):
@@ -35,7 +33,10 @@ def parse_sbid(sbid):
 def delete_path(path):
     log.debug(f"Deleting {path}")
     if not args.dry:
-        os.remove(path)
+        if os.access(path, os.W_OK):
+            os.remove(path)
+        else:
+            log.info("Aha! I don't have write permissions to delete this file - {path}.... Ignoring!")
 
 
 def main(args):
@@ -47,10 +48,22 @@ def main(args):
     root_regex = f"/CRACO/DATA_?[0-9^8]/craco/{sbid}"
     keepfile=f'/CRACO/DATA_00/craco/{sbid}/KEEP'
     if os.path.exists(keepfile):
-        log.info(f'{sbid} contains KEEP file. ignoring')
-        return
-    
-    update_table_single_entry(int(args.sbid), "delete", True, "observation")
+        log.info(f'{sbid} contains a KEEP file.')
+
+        if args.ignore_keep_file:
+            if args.keep_scans is not None or args.delete_scans is not None or args.keep_beams is not None or args.delete_beams is not None:
+                log.info(f"However, I've been asked to ignore it! Here are the values of keep_scans - {args.keep_scans}, delete_scans - {args.delete_scans}, keep_beams - {args.keep_beams}, delete_beams - {args.delete_beams}")
+                pass
+            else:
+                raise ValueError("I was not asked to keep or delete any specific scan/beam. It needs to be specified in conjunction with the ignore-keep-file option. Exiting!")
+                return
+        else:
+            log.info("I've not been asked to ignore it. So skipping this SBID")
+            return
+
+    if not args.dry:
+        pass
+        #update_table_single_entry(int(args.sbid), "delete", True, "observation")
 
     root_paths = glob.glob(root_regex)
     if len(root_paths) == 0:
@@ -84,6 +97,20 @@ def main(args):
                 else:
                     for uvfits_path in uvfits_paths:
                         beam_no = int(uvfits_path.split("/")[-1].strip(".uvfits").strip("b"))
+                        scan_no = int(uvfits_path.split("/")[-2])
+
+
+                        if args.keep_scans is not None:
+                            if scan_no in args.keep_scans:
+                                log.info(f"I am skipping scan {scan_no} because I was asked to keep these scans - {args.keep_scans}")
+                                continue
+                        elif args.delete_scans is not None:
+                            if scan_no in args.delete_scans:
+                                pass
+                            else:
+                                log.info("I am skipping scan {scan_no} because I was asked to delete only these scans - {args.delete_scans}")
+                                continue
+
                         if args.keep_beams is not None:
                             if beam_no in args.keep_beams:
                                 log.info(f"I am skipping Beam {beam_no:02g} because I was asked to keep these beams - {args.keep_beams}")
@@ -107,6 +134,20 @@ def main(args):
                 else:
                     for fil_path in filts_paths:
                         beam_no = int((fil_path.split("/")[-1]).split("_")[-1].strip(".fil").strip("b"))
+                        scan_no = int(fil_path.split("/")[-2])
+
+
+                        if args.keep_scans is not None:
+                            if scan_no in args.keep_scans:
+                                log.info(f"I am skipping scan {scan_no} because I was asked to keep these scans - {args.keep_scans}")
+                                continue
+                        elif args.delete_scans is not None:
+                            if scan_no in args.delete_scans:
+                                pass
+                            else:
+                                log.info("I am skipping scan {scan_no} because I was asked to delete only these scans - {args.delete_scans}")
+                                continue
+
                         if args.keep_beams is not None:
                             if beam_no in args.keep_beams:
                                 log.info(f"I am skipping Beam {beam_no:02g} because I was asked to keep these beams - {args.keep_beams}")
@@ -134,8 +175,14 @@ if __name__ == '__main__':
     g.add_argument("-keep_beams", type=strrange, help="Keep these beams (list)")
     g.add_argument("-delete_beams", type=strrange, help="Delete only these beams (list)")
 
+    g2 = a.add_mutually_exclusive_group()
+    g2.add_argument("-keep_scans", type=strrange, help="Keep these scans (list)")
+    g2.add_argument("-delete_scans", type=strrange, help="Delete only these scans (list)")
+    
     a.add_argument("-only_fils", action='store_true', help="Delete only fils (def: False)", default=False)
     a.add_argument("-only_uvfits", action='store_true', help="Delete only uvfits (def: False)", default=False)
+
+    a.add_argument("-ignore-keep-file", action='store_true', help="Ignore KEEP file!!! Use with caution, and only in conjuction with at least one of - keep_scans, delete_scans, keep_beams, delete_beams", default=False)
     args = a.parse_args()
 
     main(args)

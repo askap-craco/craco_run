@@ -13,5 +13,7 @@ $shellpath
 
 scanroot=$(echo $scan | sed s%/data/craco/%%)
 refresh 2>&1 >/dev/null
+# maybe this helps?
+sleep 1 
 files=$(ls /CRACO/DATA*/$scanroot/$runname/clustering_output/*uniq*.csv)
 summarise_cands $files

@@ -18,8 +18,7 @@ obschannel = "C060VEYBSBW"
 prochannel = "C05Q11P9GRH"
 opchannel = "C06FCTQ6078"
 mentionlst = [
-    "<@U049R2ZMKAN>", "<@U4P2MNJTY>", "<@U012FPE7D2B>",
-    "<@U01MHB4ABEU>", "<@U4MN5BE9X>",
+    "<@U4MN5BE9X>", # Ryan!!!!
 ]
 # mentionlst = ["<@U049R2ZMKAN>"]
 

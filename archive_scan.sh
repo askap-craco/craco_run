@@ -5,8 +5,8 @@ scan=$2
 beam=$3
 node=$4
 comment=$5
-# dry_run="--dry-run"
-dry_run=
+dry_run="--dry-run"
+# dry_run=
 
 ### format sbid
 sbid_format=$(printf "%06d" $sbid)

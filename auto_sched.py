@@ -32,7 +32,7 @@ import logging
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-def load_config(config="database.ini", section="postgresql"):
+def load_config(config="/CRACO/SOFTWARE/craco/craftop/softwares/craco_run/database.ini", section="postgresql"):
     parser = ConfigParser()
     parser.read(config)
 
@@ -469,7 +469,7 @@ class CracoCalSol:
         log.info(f"loading flagant of {self.sbid} from database...")
 
         engine = get_psql_engine()
-        sql_df = pd.read_sql(f"SELECT flagant FROM observation WHERE sbid={sbid}", engine)
+        sql_df = pd.read_sql(f"SELECT flagant FROM observation WHERE sbid={self.sbid}", engine)
 
         assert len(sql_df) == 1, "no sbid found in observation table..."
         flagant = sql_df["flagant"][0]
@@ -486,7 +486,8 @@ class CracoCalSol:
         0-indexed good antenna - note flagant is zero indexed
         """
         flagant = self.flag_ants
-        return [i-1 for i in range(1, 31) if i not in flagant]
+        return [i-1 for i in range(1, 25) if i not in flagant]
+        # return [i-1 for i in range(1, 31) if i not in flagant]
 
     def _load_flagfile_chan(self, solfreqs, flag=True):
         arr_lst = [(solfreqs / 1e6 <= freqs[1]) & (solfreqs / 1e6 >= freqs[0]) for freqs in self.flagfreqs]
