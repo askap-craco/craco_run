@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source /home/craftop/.bashrc
+
 # activate craco environment
 echo "activating conda environment for craco..."
 source /home/craftop/.conda/.remove_conda.sh
